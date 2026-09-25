@@ -1,6 +1,6 @@
 # The signable spec page
 
-The last page of a run. Not an exploration: one design, no alternatives, no radios. The user signs this off, and whoever implements works from it.
+Built only when the user says yes to it (see step 6 of `SKILL.md`), never by default. The last page of a run. Not an exploration: one design, no alternatives, no radios. The user signs this off, and whoever implements works from it.
 
 Build it with [`assets/build.js`](assets/build.js) from the last round's `tokens.css` and `data.js` — one option per axis, all locked — then run [`assets/spec-doc.js`](assets/spec-doc.js) over it to drop the picker chrome. The document keeps the light table, the same three faces and the ochre state tags, so it reads as the last page of the set rather than a different artifact.
 

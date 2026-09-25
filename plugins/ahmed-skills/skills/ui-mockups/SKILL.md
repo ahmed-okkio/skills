@@ -40,9 +40,9 @@ Every option carries a one-sentence premise, survives the genericness check, and
 
 **5. Narrow in rounds.** The user pastes the copy-back block; you restate their picks as **locks** at the top of the next round and never offer them again. The next round's brief carries the locks and only the axes still open — one page for every remaining decision. Treat a note as an amendment to the choice it sits on: it may change that option's meaning, and it may apply beyond the axis it was typed on. A block headed `mode: refine (multi-select)` is a shortlist, not a decision: every id it lists per axis stays in the next round, everything else is dropped. A `RULED OUT:` line names options the user has eliminated: they never appear again, and a note beside one (`A3 (note: no, but keep the footer time)`) is a requirement carried forward to the survivors. An `OVERALL NOTES:` block is free text: apply each line to the question or option it names, or to the whole round when it names none.
 
-**6. Finish with the signable spec** — one page, the one agreed design, every state, a code-change list pinned to real files, and the open questions the render exposed. See [`SPEC-PAGE.md`](SPEC-PAGE.md).
+**6. Offer the signable spec — ask, never default.** Once every axis is locked, ask the user whether they want a spec page; build it only on a yes. It is one page, the one agreed design, every state, a code-change list pinned to real files, and the open questions the render exposed. See [`SPEC-PAGE.md`](SPEC-PAGE.md).
 
-Done when the spec page is approved and no design question is still open.
+Done when no design question is still open and, if the user asked for a spec page, it is approved.
 
 ## Rules that hold at every step
 
