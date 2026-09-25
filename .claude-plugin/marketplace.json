@@ -1,0 +1,16 @@
+{
+  "name": "ahmed",
+  "owner": {
+    "name": "Ahmed",
+    "url": "https://github.com/ahmed-okkio"
+  },
+  "description": "Ahmed's personal agent skills marketplace.",
+  "plugins": [
+    {
+      "name": "ahmed-skills",
+      "source": "./plugins/ahmed-skills",
+      "description": "Ahmed's agent skills.",
+      "category": "productivity"
+    }
+  ]
+}

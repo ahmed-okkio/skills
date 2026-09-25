@@ -1,0 +1,20 @@
+{
+  "name": "ahmed",
+  "interface": {
+    "displayName": "Ahmed Skills"
+  },
+  "plugins": [
+    {
+      "name": "ahmed-skills",
+      "source": {
+        "source": "local",
+        "path": "./plugins/ahmed-skills"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

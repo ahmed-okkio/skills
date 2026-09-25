@@ -1,0 +1,12 @@
+{
+  "name": "ahmed-skills",
+  "version": "0.1.0",
+  "description": "Ahmed's agent skills.",
+  "author": {
+    "name": "Ahmed",
+    "url": "https://github.com/ahmed-okkio"
+  },
+  "repository": "https://github.com/ahmed-okkio/skills",
+  "license": "MIT",
+  "skills": "./skills/"
+}
