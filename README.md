@@ -30,7 +30,7 @@ Copies the skills into your project or home directory as editable files, and let
 
 ## Skills
 
-_None yet._
+- [ui-mockups](plugins/ahmed-skills/skills/ui-mockups/SKILL.md): mock up UI options for any surface (web, desktop, TUI, mobile) as standalone HTML decks, then narrow to one agreed design and a signable spec.
 
 ## Layout
 

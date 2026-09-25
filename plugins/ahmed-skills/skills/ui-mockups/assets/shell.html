@@ -1,0 +1,1351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mockup decision-deck shell</title>
+<!--
+================================================================================
+  DECISION-DECK SHELL  —  reusable harness for UI mockup decision pages
+================================================================================
+
+  Open this file in a browser as-is: it renders a small built-in demo surface so
+  the harness is testable with no real project attached.
+  Append ?selftest to the URL to run the built-in assertions and see a pass/fail
+  report pinned at the top of the page.
+
+  ------------------------------------------------------------------ WHAT TO EDIT
+  Exactly ONE block: the `MOCKUP = { ... }` data block below, marked
+  "AUTHOR DATA BLOCK", plus the "MOCK TOKENS" CSS block that holds the grounded
+  design constants for your surface. Nothing else. Never hand-copy this file:
+  `node build.js <dir>` writes both blocks out as tokens.css + data.js, and
+  `node build.js tokens.css data.js page.html` splices them back into a copy.
+
+  Contract keys (all required unless marked optional):
+    MOCKUP.key                  localStorage key, one per page
+    MOCKUP.title                page heading (drawn in the rail)
+    MOCKUP.intro                (optional) one line, shown in the keys overlay
+    MOCKUP.surface              {w, h, previewCrop:{w,h}, previewScale, comboScale}
+                                previewCrop/previewScale are legacy-accepted; the
+                                deck shows every option full size, so only w, h
+                                and comboScale (the picks-panel thumbnail) matter
+    MOCKUP.states               [{id,label}]           drives the slide live
+    MOCKUP.viewports            (optional) [{id,label,w,h}] — form factors of the
+                                SAME surface (desktop, mobile, tablet). A "view"
+                                toggle joins the state toggle; every slide,
+                                compare layer and combination renders at the
+                                active viewport's w/h, and renderSurface
+                                receives the viewport id as its 5th argument.
+                                Fluid mock CSS reflows for free; branch on the
+                                argument only where a form factor genuinely
+                                rearranges. Omit for a single-geometry surface:
+                                everything renders at surface.w/h and the
+                                toggle never appears.
+    MOCKUP.multi                (optional) true = every axis defaults to multi-select
+                                "refine" mode (Enter toggles; copy-back lists every
+                                checked id per axis in check order). Omit for the
+                                classic one-pick-per-axis behaviour.
+    MOCKUP.axes                 [{id, question, multi?, state?, unavailable?,
+                                  options:[option]}]
+                                axis.multi overrides MOCKUP.multi for that axis
+      option                    {id, name, recommended?, chips:[{text,warn?}],
+                                 why, whyNot, forecloses?:[axisId],
+                                 foreclosedReason?, state?,
+                                 unavailable?:{stateId:reason}}
+                                state = the state the question (or this one
+                                option) is judged in: entering the axis selects
+                                axis.state; entering an option with its own state
+                                selects that, and leaving it for a sibling returns
+                                to axis.state. The user can still toggle away.
+                                A question about in-flight feedback sets
+                                state:"busy" so it never opens on idle.
+                                unavailable states are never drawn: their toggle
+                                button is disabled (reason as tooltip) and the deck
+                                shows the first valid state, returning to the chosen
+                                one on the next option that supports it.
+                                axis.unavailable applies to every option of that
+                                axis; option.unavailable adds to it
+    MOCKUP.today                {axisId: optionId}      the baseline option set
+    MOCKUP.renderSurface(optionIds, stateId, mode, probe, viewportId) -> HTML string
+                                mode is "full" (the deck always judges full size;
+                                "crop" is never passed any more but keep honouring
+                                it for old data blocks); THE ESCAPE HATCH — may
+                                be replaced wholesale for any surface shape (TUI,
+                                menu, mobile, desktop). The shell assumes nothing
+                                about the markup beyond the declared w/h.
+                                probe = {axis, option} names the option on the
+                                slide; null for Today, the combination and every
+                                compare ("today") layer. A page whose axes render
+                                different surfaces branches on probe.axis.
+    MOCKUP.recipeFor(optionId)  -> [string]  delta lines for the build recipe
+    MOCKUP.footer               (optional) HTML declarations, shown in the keys
+                                overlay under "Declarations"
+
+  ------------------------------------------------------------- WHAT NEVER TO EDIT
+  Everything below the "SHELL — DO NOT EDIT" marker: theme, the deck, the rail,
+  the question header, the slide scaler, compare layers, the command bar, the
+  picks panel, copy-back assembly, notes, persistence, selftest.
+
+  ----------------------------------------------------------------- HOW IT LOOKS
+  The page is a SLIDE DECK under a slim left progress rail. One option is one
+  near-full-viewport slide — never two options of a question at once. The current
+  question is a display-size headline above the slide, so the user always knows
+  what they are answering. Every action is named once in a 42px bottom command
+  bar; nothing else on the page is a button. The pick is drawn as a chinagraph
+  ring around the option id — the one signature element; ochre is the only page
+  colour, red is reserved for cost warnings, and separation is done by tone and
+  spacing, never by 1px borders. Bahnschrift (DIN) for the question and titles;
+  Segoe UI for running text; Cascadia Mono for ids, chips and the copy-back.
+  Dark table by default; "Light page" toggles the neutral grey counterpart.
+
+  ------------------------------------------------------------ DECISION CONTROLS
+  ← → walk the deck linearly through every option of every question, answered
+  or not. Enter (or a click on the slide) picks it (toggles it, in multi mode);
+  in single mode the pick ring shows, then ADVANCE_MS later the deck jumps to
+  the next question's first slide. Any key or click in that window cancels the
+  jump. X rules the slide out and
+  steps on (press again on it to put it back). Hold C to compare with today.
+  The note line is always under the stage and annotates the slide on it (its
+  label names the option id); N focuses it. Broader remarks go in the "overall
+  notes" box on the picks panel — name a question there to scope a line. W or the "why"
+  control shows the premise and its cost. ? shows every key plus the page
+  declarations. Esc closes any overlay or leaves a note. Clicking the slide
+  picks it; the rail jumps to a question; ‹ › in the option line step for the
+  mouse. Multi-mode questions never auto-jump: Enter only toggles.
+  "Copy design prompt" in the command bar is the done button, available from
+  the first slide: it copies the copy-back block and shows the picks panel.
+  Deciding the last question opens the panel by itself.
+
+  URL params: ?selftest runs the assertions · ?zoom=<optionId> opens the deck on
+  that slide · ?zoom=__today shows the baseline as a labelled slide ·
+  ?zoom=__combo opens the picks panel · &st=<stateId> selects that state first ·
+  &vp=<viewportId> selects that viewport first (one URL = one option in one
+  state at one viewport, for headless screenshots).
+
+  Everything fits the viewport: question header + option line + slide + command
+  bar are a fixed column; only overlays (picks, keys) float. The selftest
+  measures this at 1366×768.
+
+  FIX THE SHELL, NEVER PATCH AROUND IT IN A GENERATED PAGE.
+  Every layout bug this harness was built from lived in the shell, not in anyone's
+  designs: compare layers rendering stacked (rules were scoped too narrowly),
+  scrollbars from transform:scale (the wrapper box must be real*scale), content
+  clipped inside the mock (flex children need min-width:0), page-theme colours
+  bleeding into the mock (namespace the page tokens as --pg*), and a surface
+  stylesheet restyling shell chrome over a shared class name (shell chrome
+  classes are pg- prefixed or under ids). If a generated page needs a local
+  override for any of those, the shell is wrong — fix it here.
+
+  Rules the shell enforces on your behalf:
+    - the build recipe is EMPTY until the first pick, then carries one section per
+      decided axis (that option's deltas only) plus a trailing UNDECIDED line;
+      it never restates unchanged grounded constants
+    - the mock is never re-themed by the page theme
+    - the page never scrolls; only overlays and the copy-back textarea do
+================================================================================
+-->
+<style>
+/* ============================ MOCK TOKENS ============================
+   Grounded design constants for YOUR surface. Author-owned. Namespace-free
+   on purpose: the page theme below uses --pg* and cannot collide.
+   (Demo values — replace with the measured tokens for the real surface.) */
+:root{
+  --mk-bg:#F3F3F3; --mk-card:#FFFFFF; --mk-stroke:#E5E5E5;
+  --mk-txt:rgba(0,0,0,.898); --mk-txt2:rgba(0,0,0,.62); --mk-dis:rgba(0,0,0,.36);
+  --mk-accent:#005FB8; --mk-warn:#C42B1C; --mk-ok:#0F7B0F;
+}
+.surf{width:100%;height:100%;background:var(--mk-bg);color:var(--mk-txt);position:relative;
+  font-family:"Segoe UI",system-ui,Arial,sans-serif;font-size:14px;overflow:hidden;display:flex;flex-direction:column}
+.surf .bar{height:36px;flex:0 0 36px;display:flex;align-items:center;padding:0 12px;gap:10px;
+  border-bottom:1px solid var(--mk-stroke);font-size:12px;color:var(--mk-txt2)}
+.surf .pane{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;padding:14px 16px;overflow:hidden}
+.surf h3{font-size:20px;margin:0 0 10px;font-weight:600;align-self:flex-start}
+.surf .act{border:0;border-radius:4px;padding:6px 10px;background:transparent;color:var(--mk-txt);
+  font:inherit;font-size:13px;display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+.surf .act.dis{color:var(--mk-dis)}
+.surf .act.primary{background:var(--mk-accent);color:#fff}
+.surf .list{flex:1;min-height:0;overflow:hidden}
+.surf .item{display:flex;align-items:center;min-width:0;gap:10px;height:44px;padding:0 10px;
+  background:var(--mk-card);border:1px solid var(--mk-stroke);border-radius:4px;margin-bottom:6px}
+.surf .item .txt{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.surf .item .sub{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:12px;color:var(--mk-txt2)}
+.surf .item .tagx{flex:0 0 auto;font-size:11px;border:1px solid var(--mk-accent);border-radius:5px;padding:1px 7px;
+  background:rgba(0,95,184,.16)}
+.surf .empty{padding-top:16px;text-align:center;color:var(--mk-txt2)}
+.surf .spin{width:14px;height:14px;border-radius:50%;border:2px solid rgba(0,95,184,.25);
+  border-top-color:var(--mk-accent);display:inline-block;animation:mkspin 1s linear infinite}
+@keyframes mkspin{to{transform:rotate(360deg)}}
+.surf .tip{position:absolute;left:120px;top:56px;background:#F9F9F9;border:1px solid var(--mk-stroke);
+  border-radius:4px;padding:4px 8px;font-size:12px;box-shadow:0 2px 6px rgba(0,0,0,.15)}
+.surf .modal{position:absolute;inset:0;background:rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center}
+.surf .modal div{background:#F9F9F9;border:1px solid var(--mk-stroke);border-radius:8px;padding:14px;width:70%}
+.surf .foot{flex:0 0 26px;border-top:1px solid var(--mk-stroke);margin-top:6px;padding-top:5px;
+  font-size:12px;color:var(--mk-txt2);display:flex;align-items:center;gap:8px}
+.surf .focusring{outline:2px solid var(--mk-txt);outline-offset:1px}
+
+/* =========================================================================
+   SHELL — DO NOT EDIT BELOW THIS LINE (page chrome, deck, overlays, ...)
+   Page theme tokens are --pg* so they can never reach the mock tokens above.
+   ========================================================================= */
+/* ---- One option is one SLIDE under a slim progress RAIL. Exactly one colour belongs
+   to the page: the chinagraph ochre of the mark the user makes on a slide. Red is
+   reserved for cost warnings. Separation is tone (--pg-s1/s2 against --pg-bg) and
+   spacing — never 1px borders. Type: Bahnschrift (DIN) for the question and titles;
+   Segoe UI for running text; Cascadia Mono for ids, chips and the copy-back.
+   Retheme here only; every shell rule below reads these. ---- */
+body{
+  --pg-bg:#D5D8DC;  --pg-s1:#F3F4F6;  --pg-s2:#E6E8EB;  --pg-line:#B9BEC5;
+  --pg-fg:#15181D;  --pg-fg2:#4B535E; --pg-fg3:#79818C;
+  --pg-acc:#B87D00; --pg-accfg:#15181D; --pg-accsoft:rgba(184,125,0,.14); --pg-acctxt:#7A5300;
+  --pg-warn:#B3261E; --pg-warnsoft:rgba(179,38,30,.10);
+  --pg-shadow:0 1px 2px rgba(20,24,30,.10),0 12px 32px rgba(20,24,30,.16);
+  --pg-display:Bahnschrift,"DIN Alternate","Avenir Next Condensed","Arial Narrow",system-ui,sans-serif;
+  --pg-body:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Arial,sans-serif;
+  --pg-mono:"Cascadia Mono",Consolas,"SF Mono",ui-monospace,monospace;
+  --pgacc:var(--pg-acc); /* legacy alias */
+}
+body.dark{
+  --pg-bg:#191B1F;  --pg-s1:#23262B;  --pg-s2:#2C3036;  --pg-line:#3B4048;
+  --pg-fg:#E8EAED;  --pg-fg2:#A5ACB6; --pg-fg3:#737B86;
+  --pg-acc:#E2AE3A; --pg-accfg:#15181D; --pg-accsoft:rgba(226,174,58,.16); --pg-acctxt:#E2AE3A;
+  --pg-warn:#F0857A; --pg-warnsoft:rgba(240,133,122,.14);
+  --pg-shadow:0 1px 2px rgba(0,0,0,.4),0 12px 36px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--pg-bg);color:var(--pg-fg);font-size:13px;line-height:1.45;
+  font-family:var(--pg-body);-webkit-font-smoothing:antialiased;overflow:hidden;
+  display:flex}
+code,.mono{font-family:var(--pg-mono);font-size:12px}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--pg-acc);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
+
+/* ---- rail: one slot per question; done carries the mark colour; moot is struck ---- */
+#rail{flex:0 0 108px;background:var(--pg-s1);display:flex;flex-direction:column;min-height:0}
+#rail .hd{font-family:var(--pg-display);font-stretch:87.5%;font-size:12px;font-weight:600;color:var(--pg-fg2);
+  padding:14px 12px 10px;line-height:1.3;overflow:hidden}
+#rail .slot{display:block;width:100%;text-align:left;background:transparent;border:0;cursor:pointer;
+  padding:9px 12px;border-left:3px solid transparent}
+#rail .slot .ax{font-family:var(--pg-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--pg-fg3)}
+#rail .slot .st{font-family:var(--pg-display);font-stretch:87.5%;font-size:12px;color:var(--pg-fg3);margin-top:1px}
+#rail .slot:hover{background:var(--pg-s2)}
+#rail .slot.cur{border-left-color:var(--pg-fg);background:var(--pg-s2)}
+#rail .slot.cur .ax,#rail .slot.cur .st{color:var(--pg-fg)}
+#rail .slot.done .st{color:var(--pg-acctxt);font-weight:600}
+#rail .slot.moot .ax,#rail .slot.moot .st{text-decoration:line-through;opacity:.55}
+
+/* ---- main column: question header / option line / stage / note row / command bar ---- */
+#main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;min-height:0}
+#qhead{flex:0 0 auto;padding:16px 28px 6px}
+#qhead .eyebrow{font-family:var(--pg-mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--pg-fg3)}
+#qhead h1{font-family:var(--pg-display);font-stretch:87.5%;font-size:38px;font-weight:600;letter-spacing:-.01em;
+  margin:2px 0 0;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#qhead h1 .why{font-family:var(--pg-body);font-weight:400;font-size:13px;color:var(--pg-warn);margin-left:12px;letter-spacing:0}
+#optline{flex:0 0 28px;display:flex;align-items:center;gap:10px;padding:0 28px;min-width:0}
+#optline .nav{background:transparent;border:0;color:var(--pg-fg3);font-size:16px;line-height:1;padding:2px 8px;cursor:pointer;border-radius:4px}
+#optline .nav:hover:not(:disabled){background:var(--pg-s2);color:var(--pg-fg)}
+#optline .nav:disabled{opacity:.3;cursor:default}
+/* THE MARK: the chinagraph ring around the option id of the slide you picked */
+#optline .fid{position:relative;font-family:var(--pg-mono);font-size:11px;letter-spacing:.12em;color:var(--pg-fg3);padding:0 4px}
+#optline .fid::after{content:"";position:absolute;left:-8px;right:-8px;top:-4px;bottom:-4px;border:2.5px solid var(--pg-acc);
+  border-radius:52% 48% 55% 45% / 48% 57% 43% 52%;transform:rotate(-7deg) scale(.7);opacity:0;pointer-events:none;
+  transition:transform .16s cubic-bezier(.2,.9,.3,1.2),opacity .12s ease}
+body.sel #optline .fid{color:var(--pg-fg);font-weight:600}
+body.sel #optline .fid::after{opacity:1;transform:rotate(-7deg) scale(1)}
+#optline .nm{font-family:var(--pg-display);font-stretch:87.5%;font-size:15px;font-weight:600;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.rout #optline .nm{text-decoration:line-through;text-decoration-color:var(--pg-fg3);color:var(--pg-fg3)}
+#optline .ck{font-family:var(--pg-mono);font-size:10px;letter-spacing:.08em;color:var(--pg-acctxt);font-weight:600;white-space:nowrap}
+#optline .ck.out{color:var(--pg-fg3)}
+#optline .rec{font-family:var(--pg-mono);font-size:10px;letter-spacing:.08em;color:var(--pg-fg2);white-space:nowrap}
+#optline .chips{display:flex;gap:12px;min-width:0;overflow:hidden}
+#optline .chips span{font-family:var(--pg-mono);font-size:10.5px;color:var(--pg-fg2);white-space:nowrap}
+#optline .chips span.warn{color:var(--pg-warn)}
+#optline .whyb{background:transparent;border:0;color:var(--pg-fg3);font-size:11.5px;cursor:pointer;padding:2px 6px;border-radius:4px}
+#optline .whyb:hover{color:var(--pg-fg);background:var(--pg-s2)}
+#optline .pos{margin-left:auto;font-family:var(--pg-mono);font-size:10.5px;color:var(--pg-fg3);white-space:nowrap}
+#whyrow{display:none;flex:0 0 auto;padding:4px 28px 0;font-size:12px;color:var(--pg-fg2);max-width:110ch}
+#whyrow.on{display:block}
+#whyrow b{color:var(--pg-fg3);font-weight:600}
+
+/* ---- stage: the slide is the judging size; wrapper box is real*scale, clipped ---- */
+#stage{flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center;padding:8px 28px;position:relative}
+#slide{position:relative;overflow:hidden;background:#fff;box-shadow:var(--pg-shadow);cursor:pointer}
+#slide .sc{position:absolute;left:0;top:0;transform-origin:0 0}
+body.rout #slide{opacity:.45;filter:grayscale(.9)}
+.vlab{position:absolute;left:12px;top:12px;z-index:9;font-family:var(--pg-mono);font-size:10px;font-weight:700;
+  letter-spacing:.12em;padding:2px 8px;border-radius:3px;background:var(--pg-warn);color:#fff;display:none;pointer-events:none}
+body.cmpall #slide .vlab{display:block}
+/* compare layers: one sized box, both absolute, opacity flip */
+.stack{position:relative}
+.stack > .now,.stack > .orig{position:absolute;left:0;top:0}
+.stack > .orig{opacity:0;pointer-events:none}
+body.cmpall .stack > .orig{opacity:1}
+body.cmpall .stack > .now{opacity:0}
+
+/* ---- note line: always present under the stage; ONE borderless writing line that
+   annotates the slide on it (its label names the option id). N focuses it. ---- */
+#noterow{display:flex;flex:0 0 auto;padding:6px 28px 2px;gap:14px;align-items:center}
+#noterow label{font-family:var(--pg-mono);font-size:10px;color:var(--pg-fg3);letter-spacing:.12em;text-transform:uppercase;white-space:nowrap}
+#noterow input{flex:1;min-width:0;max-width:640px;font:inherit;font-size:12px;padding:3px 4px;border:0;border-bottom:1px solid var(--pg-line);
+  background:transparent;color:var(--pg-fg)}
+#noterow input::placeholder{color:var(--pg-fg3)}
+#noterow input:focus{outline:none;border-bottom-color:var(--pg-acc)}
+
+/* ---- command bar: every action named once; the only buttons on the page ---- */
+#cmd{flex:0 0 42px;background:var(--pg-s1);display:flex;align-items:center;gap:16px;padding:0 16px;font-size:12.5px}
+.seg{display:inline-flex;background:var(--pg-s2);border-radius:6px;overflow:hidden}
+.seg button{font-family:var(--pg-display);font-stretch:87.5%;font-size:12px;padding:4px 10px;border:0;
+  background:transparent;color:var(--pg-fg2);cursor:pointer;white-space:nowrap}
+.seg button:hover{color:var(--pg-fg)}
+.seg button:disabled{opacity:.3;cursor:not-allowed;text-decoration:none}
+.seg button.on{background:var(--pg-fg);color:var(--pg-s1);font-weight:600}
+#hints{font-family:var(--pg-mono);font-size:10.5px;color:var(--pg-fg3);letter-spacing:.02em;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;min-width:0}
+button.act{font-family:var(--pg-display);font-stretch:87.5%;font-size:12.5px;padding:5px 12px;border:0;
+  background:var(--pg-s2);color:var(--pg-fg);border-radius:6px;cursor:pointer;white-space:nowrap}
+button.act:hover:not(:disabled){background:var(--pg-bg)}
+button.act.on{background:var(--pg-fg);color:var(--pg-s1)}
+button.act:disabled{opacity:.4;cursor:default}
+#picksb{margin-left:auto}
+#picksb.done{color:var(--pg-acctxt);font-weight:600}
+
+/* ---- overlays: picks panel and keys panel float over the deck; only they scroll ---- */
+.ov{position:fixed;inset:0;background:rgba(10,12,15,.55);z-index:200;display:none;
+  align-items:flex-start;justify-content:flex-start;overflow:auto;padding:24px}
+.ov.on{display:flex}
+.ov .inner{background:var(--pg-s1);border-radius:10px;padding:20px 22px;margin:auto;
+  box-shadow:var(--pg-shadow);max-width:960px}
+.ov h2{font-family:var(--pg-display);font-stretch:87.5%;font-size:16px;font-weight:600;margin:0 0 12px}
+.ov .close{float:right;background:var(--pg-s2);border:0;border-radius:6px;padding:4px 12px;cursor:pointer;
+  font-family:var(--pg-display);font-stretch:87.5%;font-size:12.5px;color:var(--pg-fg2)}
+.ov .close:hover{color:var(--pg-fg)}
+#picks .cols{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap}
+#picks .pg-panel{flex:1;min-width:340px;border-radius:6px;background:var(--pg-bg);overflow:hidden}
+#picks .pg-ph{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:30px;padding:2px 8px 2px 12px;
+  background:var(--pg-s2);font-family:var(--pg-mono);font-size:10px;color:var(--pg-fg3);letter-spacing:.12em;text-transform:uppercase}
+#picks .pg-ph .t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#picks .pg-ph button{flex:0 0 auto}
+.recipe{display:block;width:100%;height:220px;font-family:var(--pg-mono);font-size:11.5px;line-height:1.5;
+  padding:10px 12px;border:0;background:transparent;color:var(--pg-fg);resize:vertical;outline:none}
+#combo .cap{font-family:var(--pg-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--pg-fg3);margin:0 0 6px}
+#combo .box{position:relative;overflow:hidden;background:#fff;box-shadow:var(--pg-shadow);cursor:zoom-in}
+#combo .box .sc,#czbox .sc{position:absolute;left:0;top:0;transform-origin:0 0}
+#czbox{position:relative;overflow:hidden;background:#fff;box-shadow:var(--pg-shadow)}
+#help .keys{display:grid;grid-template-columns:auto 1fr;gap:6px 18px;font-size:12.5px;margin:0 0 18px}
+#help .keys .k{font-family:var(--pg-mono);font-size:11px;color:var(--pg-fg2);white-space:nowrap}
+#help .decl{font-size:12px;color:var(--pg-fg2);max-width:80ch}
+#help .decl b{color:var(--pg-fg3)}
+
+#selftest{position:fixed;left:120px;right:24px;top:12px;z-index:300;border-radius:6px;padding:8px 12px;
+  font-family:var(--pg-mono);font-size:12px;white-space:pre-wrap;display:none;max-height:60vh;overflow:auto}
+#selftest.on{display:block}
+#selftest.pass{background:#0f2e14;color:#c8f7cf}
+#selftest.fail{background:#3a1512;color:#ffc9c2}
+</style>
+</head>
+<body>
+<script>
+/* ============================================================================
+   AUTHOR DATA BLOCK — THE ONLY THING A FUTURE RUN EDITS
+   Demo content below: a generic "Items" panel. Replace wholesale.
+   ============================================================================ */
+var MOCKUP={
+  key:"mockup.demo.v2",
+  title:"Demo surface — pick one per question",
+  intro:"Built-in demo so the shell runs standalone. Replace MOCKUP and the MOCK TOKENS block for a real surface.",
+
+  surface:{w:820,h:520,previewCrop:{w:820,h:520},previewScale:0.36,comboScale:0.42},
+
+  /* two form factors of the same panel; the fluid .surf CSS reflows on its own,
+     so renderSurface needs no branch — branch on its 5th argument when one would */
+  viewports:[
+    {id:"desktop",label:"desktop",w:820,h:520},
+    {id:"phone",label:"phone",w:380,h:640}
+  ],
+
+  states:[
+    {id:"idle",label:"idle"},
+    {id:"busy",label:"working"},
+    {id:"disabled",label:"disabled + tip"},
+    {id:"error",label:"error"},
+    {id:"empty",label:"empty"},
+    {id:"overflow",label:"overflow"},
+    {id:"hover",label:"hover"},
+    {id:"focus",label:"focus ring"}
+  ],
+
+  today:{action:"A1",feedback:"B1",survives:"C1"},
+
+  axes:[
+    {id:"action",question:"Where does the action button sit?",options:[
+      {id:"A1",name:"In the header bar",recommended:true,
+       chips:[{text:"cheap"},{text:"no move"}],
+       why:"Where it already is; nothing to rebind.",
+       whyNot:"Far from the rows it changes."},
+      {id:"A2",name:"Above the list, right-aligned",
+       chips:[{text:"cheap"},{text:"+2 tab stops",warn:true}],
+       why:"Next to the content it affects.",
+       whyNot:"Sits beside the primary action, easy to mis-click."},
+      {id:"A3",name:"In a footer strip",
+       chips:[{text:"new pattern",warn:true}],
+       why:"Chore lives with the status text.",
+       whyNot:"Last tab stop on the page."}
+    ]},
+    {id:"feedback",question:"How is work in progress shown?",state:"busy",options:[
+      {id:"B1",name:"Nothing at all",
+       chips:[{text:"today"},{text:"no signal",warn:true}],
+       why:"Zero cost.",
+       whyNot:"Busy and locked look identical."},
+      {id:"B2",name:"Spinner in the button",recommended:true,
+       chips:[{text:"stock control"},{text:"cheap"}],
+       why:"Separates busy from disabled.",
+       whyNot:"Flashes on fast calls."},
+      {id:"B3",name:"Status line in the footer",
+       chips:[{text:"needs a footer",warn:true}],
+       why:"Also covers background work.",
+       whyNot:"Easy to miss."}
+    ]},
+    {id:"survives",question:"Does the manual button survive?",options:[
+      {id:"C1",name:"Yes, unchanged",recommended:true,
+       chips:[{text:"cheap"}],
+       why:"No migration, no retraining.",
+       whyNot:"Keeps the original problem in place."},
+      {id:"C2",name:"No — automatic only",
+       chips:[{text:"deletes a control"},{text:"breaks test ids",warn:true}],
+       why:"Removes the whole question.",
+       whyNot:"Nothing to press when you need it now.",
+       forecloses:["action","feedback"],
+       foreclosedReason:"no button left to place or animate",
+       unavailable:{disabled:"no button — no disabled state"}}
+    ]}
+  ],
+
+  /* THE ESCAPE HATCH. Return any markup; honour the declared w/h.
+     optionIds = {axisId:optionId}, stateId = MOCKUP.states[].id, mode = "full"|"crop" */
+  renderSurface:function(o,st,mode){
+    var busy=(o.feedback==="B2"&&st==="busy"), gone=(o.survives==="C2");
+    var btn=function(where){
+      if(gone) return '<span class="act dis">auto</span>';
+      if(o.action!==where) return "";
+      var dis=(st==="disabled")?" dis":"";
+      return '<button class="act'+dis+(st==="focus"?" focusring":"")+'">'+
+             (busy?'<span class="spin"></span>Working…':'&#8635; Action')+'</button>';
+    };
+    var rows="";
+    if(st==="empty") rows='<div class="empty">Nothing here yet. Use the action above to add one.</div>';
+    else if(st==="error") rows=""; /* the fetch failed: nothing to list under the dialog */
+    else{
+      var n=(st==="overflow")?14:4;
+      for(var i=0;i<n;i++){
+        rows+='<div class="item'+(st==="hover"&&i===0?" hover":"")+(st==="focus"&&i===0?" focusring":"")+'">'+
+          '<span class="txt">Item '+(i+1)+' — a name long enough to need an ellipsis when space runs out</span>'+
+          '<span class="sub">updated 2 minutes ago</span>'+
+          '<span class="tagx">Ready</span></div>';
+      }
+    }
+    var h='<div class="surf">';
+    h+='<div class="bar"><b>Demo App</b>'+btn("A1")+'</div>';
+    h+='<div class="pane"><h3>Items</h3>';
+    h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;min-width:0">'+
+       '<div style="display:flex;gap:8px;min-width:0;overflow:hidden">'+
+       '<span class="act">All</span><span class="act">Ready</span><span class="act">Archived</span></div>'+
+       '<div style="display:flex;gap:8px;flex:0 0 auto">'+btn("A2")+'<button class="act primary">New item</button></div></div>';
+    h+='<div class="list">'+rows+'</div>';
+    h+='<div class="foot" style="'+((o.action==="A3"||o.feedback==="B3"||gone)?"":"visibility:hidden")+'">'+
+       (o.feedback==="B3"||gone?(busy||gone&&st==="busy"?'<span class="spin"></span>':'')+'<span>Last updated 09:16</span>':'<span>x</span>')+
+       (o.action==="A3"?'<span style="margin-left:auto">'+btn("A3")+'</span>':'')+'</div>';
+    h+='</div>';
+    if(st==="disabled"&&!gone) h+='<div class="tip">Not available right now</div>';
+    if(st==="error") h+='<div class="modal"><div><b>Error</b><p style="margin:6px 0 0;font-size:13px">Something failed. Try again later.</p></div></div>';
+    h+='</div>';
+    return h;
+  },
+
+  recipeFor:function(id){
+    var R={
+      A1:["no change: action button stays in the header bar","  files: none"],
+      A2:["move the action button above the list, right-aligned next to the primary action","  files: <page>","  tab order moves into the filter group"],
+      A3:["add a footer strip holding status text and the action button","  files: <page>, <code-behind>","  action becomes the last tab stop"],
+      B1:["no change: no in-progress feedback"],
+      B2:["swap the icon for a spinner while the call is in flight; label \"Working…\"","  files: <page>, <code-behind>","  add a ~400 ms minimum visible time"],
+      B3:["footer status line driven by both manual and background work","  files: <page>, <code-behind>"],
+      C1:["no change: manual button kept"],
+      C2:["delete the manual button, its cooldown timer and its tooltip; automatic refresh only",
+          "  files: <page>, <code-behind>","  AutomationId DROPPED — rewrite tests that click it"]
+    };
+    return R[id]||["(no deltas recorded)"];
+  },
+
+  footer:"<b>Declarations.</b> Demo content. Replace with the real fidelity notes: which colours are platform reference values rather than repo facts, which glyphs are stand-ins, and what could not be resolved from source."
+};
+/* ====================== END AUTHOR DATA BLOCK ====================== */
+
+/* SHELL: page theme before first paint (dark table by default), keyed off MOCKUP.key. */
+(function(){try{var v=JSON.parse(localStorage.getItem(MOCKUP.key)||"{}");
+  if(v.theme!=="light")document.body.classList.add("dark");
+}catch(e){document.body.classList.add("dark");}})();
+</script>
+
+<div id="selftest"></div>
+<div id="rail"><div class="hd" id="railhd"></div><div id="slots"></div></div>
+<div id="main">
+  <div id="qhead"><div class="eyebrow" id="qeyebrow"></div><h1 id="qtitle"></h1></div>
+  <div id="optline">
+    <button class="nav" id="prevb" title="previous slide (Left arrow)">&#8249;</button>
+    <span class="fid" id="oid"></span>
+    <span class="nm" id="oname"></span>
+    <span class="ck" id="omark"></span>
+    <span class="rec" id="orec"></span>
+    <span class="chips" id="ochips"></span>
+    <button class="whyb" id="whyb" title="premise and cost (W)">why</button>
+    <span class="pos" id="opos"></span>
+    <button class="nav" id="nextb" title="next slide (Right arrow)">&#8250;</button>
+  </div>
+  <div id="whyrow"></div>
+  <div id="stage"><div id="slide" role="radio" aria-checked="false"><span class="vlab">TODAY</span></div></div>
+  <div id="noterow">
+    <label for="noteIn" id="notelab">note</label>
+    <input id="noteIn" placeholder="type a note on this option — it returns with your answers">
+  </div>
+  <div id="cmd">
+    <div class="seg" id="vps"></div>
+    <div class="seg" id="states"></div>
+    <span id="hints">&#8629; pick &nbsp;&#183;&nbsp; X rule out &nbsp;&#183;&nbsp; C compare with today &nbsp;&#183;&nbsp; ? keys</span>
+    <button class="act" id="picksb">Copy design prompt</button>
+    <button class="act" id="reset">Reset</button>
+    <button class="act" id="theme" title="Page chrome only — the mock never changes theme">Light page</button>
+  </div>
+</div>
+
+<div class="ov" id="picks"><div class="inner">
+  <button class="close" data-close="picks">Close</button>
+  <h2>Your picks</h2>
+  <div class="cols">
+    <div id="combo"><div class="cap">combination — click it to see it big</div><div class="box" title="See the combination big"></div></div>
+    <div style="flex:1;min-width:340px;display:flex;flex-direction:column;gap:12px">
+      <div class="pg-panel"><div class="pg-ph"><span class="t">overall notes — name a question (e.g. action) to scope a line</span></div>
+        <textarea class="recipe" id="gnote" spellcheck="false" style="height:70px" placeholder="anything else the agent should know"></textarea></div>
+      <div class="pg-panel"><div class="pg-ph"><span class="t">design prompt — paste this into the chat</span>
+        <button class="act" id="copy">Copy prompt</button></div>
+        <textarea class="recipe" id="out" readonly spellcheck="false"></textarea></div>
+    </div>
+  </div>
+</div></div>
+
+<div class="ov" id="help"><div class="inner">
+  <button class="close" data-close="help">Close</button>
+  <h2>Keys</h2>
+  <div class="keys">
+    <span class="k">&#8592; &#8594;</span><span>previous / next slide — linear through every option of every question; answered questions included. &#8629; or a click picks the slide, then the deck moves on to the next question</span>
+    <span class="k">&#8629;</span><span>pick this slide (in a refine round: toggle it in or out of the shortlist)</span>
+    <span class="k">X</span><span>rule this slide out and step on; press it again on the slide to put it back</span>
+    <span class="k">C (hold)</span><span>compare with today — the baseline replaces the slide while held</span>
+    <span class="k">N</span><span>focus the note line under the stage — it annotates the slide you are on; broader remarks go in "overall notes" on the picks panel</span>
+    <span class="k">W</span><span>show this option's premise and its cost</span>
+    <span class="k">Esc</span><span>close this panel or the picks panel, or leave the note</span>
+  </div>
+  <p style="font-size:12px;color:var(--pg-fg2);max-width:80ch" id="helpintro"></p>
+  <div class="decl" id="footbody"></div>
+</div></div>
+
+<div class="ov" id="combozoom"><div class="inner">
+  <button class="close" data-close="combozoom">Close</button>
+  <h2 id="czcap">your combination</h2>
+  <div id="czbox"></div>
+</div></div>
+
+<script>
+/* ============================================================================
+   SHELL — DO NOT EDIT. Fix bugs here, never in a generated page.
+   ============================================================================ */
+var S=MOCKUP.surface, ST=MOCKUP.states[0].id, WANT=ST;
+/* viewports: form factors of the same surface. Absent = one geometry, no toggle. */
+var VPS=(MOCKUP.viewports&&MOCKUP.viewports.length)?MOCKUP.viewports:null;
+var VP=VPS?VPS[0].id:null;
+function vpDims(){
+  if(VPS)for(var i=0;i<VPS.length;i++)if(VPS[i].id===VP)return VPS[i];
+  return {w:S.w,h:S.h};
+}
+/* state.sel[axisId] is an option id (single mode) or an ordered array of ids (multi
+   mode); picks() reads either shape so pages saved under one mode reload in the other.
+   state.notes = per-axis notes, state.onotes = per-option notes, state.out = option ids
+   ruled out (the slide recedes and is listed under RULED OUT in the copy-back so the
+   next round drops it). state.cur = the option id the deck was left on. */
+var state={sel:{},notes:{},onotes:{},out:{},theme:null,cur:null};
+
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");}
+function save(){try{localStorage.setItem(MOCKUP.key,JSON.stringify(state));}catch(e){}}
+function load(){try{var v=localStorage.getItem(MOCKUP.key);if(v)state=JSON.parse(v);}catch(e){}
+  if(!state.sel)state.sel={};if(!state.notes)state.notes={};if(!state.onotes)state.onotes={};if(!state.out)state.out={};}
+function optById(id){for(var i=0;i<MOCKUP.axes.length;i++){var o=MOCKUP.axes[i].options;
+  for(var j=0;j<o.length;j++)if(o[j].id===id)return o[j];}return null;}
+function axisOf(id){for(var i=0;i<MOCKUP.axes.length;i++){var o=MOCKUP.axes[i].options;
+  for(var j=0;j<o.length;j++)if(o[j].id===id)return MOCKUP.axes[i];}return null;}
+function axisById(id){for(var i=0;i<MOCKUP.axes.length;i++)if(MOCKUP.axes[i].id===id)return MOCKUP.axes[i];return null;}
+
+/* ---- pick model: one id per axis, or an ordered list of ids in multi ("refine") mode ---- */
+function isMulti(ax){ if(!ax)return false; if(ax.multi===true||ax.multi===false)return ax.multi; return MOCKUP.multi===true; }
+function anyMulti(){for(var i=0;i<MOCKUP.axes.length;i++)if(isMulti(MOCKUP.axes[i]))return true;return false;}
+function picks(axisId){
+  var v=state.sel[axisId]; if(v==null||v==="")return [];
+  var arr=Array.isArray(v)?v.slice():[v];
+  return isMulti(axisById(axisId))?arr:arr.slice(0,1);
+}
+function picked(axisId,optId){return picks(axisId).indexOf(optId)>=0;}
+/* single: set; multi: toggle, keeping check order. Picking a ruled-out slide restores it. */
+function pick(axisId,optId){
+  delete state.out[optId];
+  if(isMulti(axisById(axisId))){
+    var p=picks(axisId),i=p.indexOf(optId);
+    if(i>=0)p.splice(i,1);else p.push(optId);
+    if(p.length)state.sel[axisId]=p;else delete state.sel[axisId];
+  }else state.sel[axisId]=optId;
+}
+/* rule out: toggle; a ruled-out slide cannot also be picked */
+function isOut(optId){return state.out[optId]===true;}
+function ruleOut(optId){
+  if(isOut(optId)){delete state.out[optId];return false;}
+  state.out[optId]=true;
+  var ax=axisOf(optId);if(ax&&picked(ax.id,optId)){
+    var p=picks(ax.id);p.splice(p.indexOf(optId),1);
+    if(!p.length)delete state.sel[ax.id];else state.sel[ax.id]=isMulti(ax)?p:p[0];
+  }
+  return true;
+}
+function outs(axisId){var ax=axisById(axisId),r=[];if(!ax)return r;
+  for(var i=0;i<ax.options.length;i++)if(isOut(ax.options[i].id))r.push(ax.options[i].id);return r;}
+
+/* an axis is moot when a chosen option elsewhere forecloses it */
+function moot(axisId){
+  for(var k in state.sel){ if(!state.sel.hasOwnProperty(k))continue;
+    var p=picks(k);
+    for(var i=0;i<p.length;i++){var o=optById(p[i]); if(!o||!o.forecloses)continue;
+      if(o.forecloses.indexOf(axisId)>=0) return o.foreclosedReason||("foreclosed by "+o.name);}
+  }
+  return "";
+}
+/* option set = today, overridden by picks (or by one probe option for the slide).
+   In multi mode the FIRST checked option of an axis stands in for the combination. */
+function setFor(probeAxis,probeOpt){
+  var o={},k;
+  for(k in MOCKUP.today) if(MOCKUP.today.hasOwnProperty(k)) o[k]=MOCKUP.today[k];
+  for(k in state.sel) if(state.sel.hasOwnProperty(k)&&!moot(k)&&picks(k).length) o[k]=picks(k)[0];
+  if(probeAxis) o[probeAxis]=probeOpt;
+  return o;
+}
+function todaySet(){var o={},k;for(k in MOCKUP.today)if(MOCKUP.today.hasOwnProperty(k))o[k]=MOCKUP.today[k];return o;}
+
+/* ---- the deck: a flat list of {ax, opt} slides over every non-moot axis, in order.
+   ← → always walk it linearly. ADV = the pending auto-advance after a single-mode
+   pick; any navigation cancels it. ---- */
+var CUR=0, TODAYMODE=false, ADV=null, ADVANCE_MS=500;
+function cancelAdv(){if(ADV){clearTimeout(ADV);ADV=null;}}
+function deck(){
+  var d=[];
+  for(var a=0;a<MOCKUP.axes.length;a++){
+    var ax=MOCKUP.axes[a];if(moot(ax.id))continue;
+    for(var i=0;i<ax.options.length;i++)d.push({ax:ax,opt:ax.options[i]});
+  }
+  return d;
+}
+function slideOf(optId){var d=deck();for(var i=0;i<d.length;i++)if(d[i].opt.id===optId)return i;return -1;}
+function clampCur(){var d=deck();if(!d.length){CUR=0;return;}if(CUR>=d.length)CUR=d.length-1;if(CUR<0)CUR=0;}
+function allDecided(){
+  var t=0,dn=0;
+  for(var i=0;i<MOCKUP.axes.length;i++){var id=MOCKUP.axes[i].id;
+    if(moot(id))continue;t++;if(picks(id).length)dn++;}
+  return t>0&&dn===t;
+}
+function step(dir){
+  cancelAdv();
+  var d=deck();if(!d.length)return;
+  if(TODAYMODE){TODAYMODE=false;paint();return;}
+  if(dir>0){
+    if(CUR+1<d.length){CUR++;paint();return;}
+    openOv("picks");return;
+  }
+  if(CUR>0){CUR--;paint();}
+}
+/* jump from the slide of optId to the next question's first slide; none left = done */
+function advanceFrom(optId){
+  var d=deck(),at=slideOf(optId);if(at<0)return;
+  for(var i=at+1;i<d.length;i++)if(d[i].ax!==d[at].ax){CUR=i;paint();return;}
+  openOv("picks");
+}
+/* Enter or a click on the slide: pick it; in single mode, show the ring, then move on */
+function commitPick(){
+  cancelAdv();
+  var d=deck();if(!d.length||TODAYMODE)return;
+  var cur=d[CUR],was=allDecided();
+  pick(cur.ax.id,cur.opt.id);paint();
+  if(!was&&allDecided()){openOv("picks");return;}
+  if(isMulti(cur.ax)||!picked(cur.ax.id,cur.opt.id))return;
+  var id=cur.opt.id;
+  ADV=setTimeout(function(){ADV=null;if(!anyOv()&&deck()[CUR]&&deck()[CUR].opt.id===id)advanceFrom(id);},ADVANCE_MS);
+}
+function goToAxis(axId){
+  cancelAdv();
+  var d=deck();
+  for(var i=0;i<d.length;i++)if(d[i].ax.id===axId){
+    /* land on the picked slide when there is one, else the first slide */
+    var p=picks(axId);
+    if(p.length){var j=slideOf(p[0]);if(j>=0){CUR=j;paint();return;}}
+    CUR=i;paint();return;}
+}
+
+/* ---- compare stack: both layers absolute in one sized box, opacity flip only.
+   Renders at the active viewport's geometry; both layers share it. ---- */
+function stack(optionIds,na,probe){
+  var d=vpDims();
+  var box=function(cls,ids,pr){
+    return '<div class="'+cls+'" style="width:'+d.w+'px;height:'+d.h+'px;overflow:hidden">'+
+           MOCKUP.renderSurface(ids,ST,"full",pr||null,VP)+'</div>';
+  };
+  var h='<div class="stack" style="width:'+d.w+'px;height:'+d.h+'px">'+
+        box("now",optionIds,probe)+box("orig",todaySet(),null);
+  return h+'</div>';
+}
+
+/* ---- render ---- */
+function fitScale(){
+  var st=document.getElementById("stage"),r=st.getBoundingClientRect(),d=vpDims();
+  var s=Math.min((r.width-16)/d.w,(r.height-8)/d.h,1);
+  return s>0.995?1:Math.max(s,0.05);
+}
+function drawSlide(){
+  var d=deck(),slide=document.getElementById("slide");
+  var body=document.body;
+  body.classList.remove("sel","rout");
+  if(!d.length){slide.innerHTML="";return;}
+  clampCur();
+  var cur=d[CUR],ids,na="",probe=null;
+  if(TODAYMODE){ids=todaySet();}
+  else{ids=setFor(cur.ax.id,cur.opt.id);probe={axis:cur.ax.id,option:cur.opt.id};
+       na="";}
+  var k=fitScale(),vd=vpDims();
+  slide.style.width=Math.round(vd.w*k)+"px";slide.style.height=Math.round(vd.h*k)+"px";
+  slide.innerHTML='<span class="vlab">TODAY</span>'+
+    '<div class="sc" style="width:'+vd.w+'px;height:'+vd.h+'px;transform:scale('+k+')">'+
+    stack(ids,na,probe)+'</div>';
+  if(!TODAYMODE){
+    if(picked(cur.ax.id,cur.opt.id))body.classList.add("sel");
+    if(isOut(cur.opt.id))body.classList.add("rout");
+  }
+  slide.setAttribute("aria-checked",body.classList.contains("sel")?"true":"false");
+  slide.setAttribute("aria-label",TODAYMODE?"Today":cur.opt.name);
+  document.getElementById("hints").style.visibility=d.length?"visible":"hidden";
+}
+function drawHead(){
+  var d=deck();if(!d.length)return;
+  var cur=d[CUR],axes=[],ai=0;
+  for(var a=0;a<MOCKUP.axes.length;a++)if(!moot(MOCKUP.axes[a].id))axes.push(MOCKUP.axes[a]);
+  for(var i=0;i<axes.length;i++)if(axes[i]===cur.ax)ai=i;
+  document.getElementById("qeyebrow").textContent=
+    TODAYMODE?"BASELINE":("QUESTION "+(ai+1)+" OF "+axes.length+" · "+cur.ax.id);
+  document.getElementById("qtitle").textContent=TODAYMODE?"Today, unchanged":cur.ax.question;
+  var oi=cur.ax.options.indexOf(cur.opt),mu=isMulti(cur.ax);
+  document.getElementById("oid").textContent=TODAYMODE?"":cur.opt.id;
+  document.getElementById("oname").textContent=TODAYMODE?"Today":cur.opt.name;
+  var mark=document.getElementById("omark"),out=isOut(cur.opt.id);
+  mark.className="ck"+(out?" out":"");
+  mark.textContent=TODAYMODE?"":(out?"✗ ruled out":(picked(cur.ax.id,cur.opt.id)?(mu?"✓ in":"✓ picked"):""));
+  document.getElementById("orec").textContent=(!TODAYMODE&&cur.opt.recommended)?"recommended":"";
+  var ch="";if(!TODAYMODE)for(var c=0;c<(cur.opt.chips||[]).length;c++)
+    ch+='<span'+(cur.opt.chips[c].warn?' class="warn"':'')+'>'+esc(cur.opt.chips[c].text)+'</span>';
+  document.getElementById("ochips").innerHTML=ch;
+  document.getElementById("opos").textContent=TODAYMODE?"hold C anywhere for this":
+    ("slide "+(oi+1)+" of "+cur.ax.options.length);
+  document.getElementById("whyb").style.visibility=TODAYMODE?"hidden":"visible";
+  document.getElementById("prevb").disabled=(CUR<=0&&!TODAYMODE);
+  document.getElementById("nextb").disabled=false;
+  var wr=document.getElementById("whyrow");
+  if(wr.classList.contains("on")&&!TODAYMODE)
+    wr.innerHTML="<b>Why:</b> "+esc(cur.opt.why||"")+" &nbsp; <b>Why not:</b> "+esc(cur.opt.whyNot||"");
+  /* the note line follows the slide it annotates; its label names the option */
+  var nlab=document.getElementById("notelab"),nin=document.getElementById("noteIn");
+  if(TODAYMODE){nlab.textContent="note";nin.value="";}
+  else{nlab.textContent="note · "+cur.opt.id;nin.value=state.onotes[cur.opt.id]||"";}
+}
+function drawRail(){
+  var h="",d=deck();
+  for(var a=0;a<MOCKUP.axes.length;a++){
+    var ax=MOCKUP.axes[a],m=moot(ax.id),p=picks(ax.id),cur=(!TODAYMODE&&d.length&&d[CUR].ax===ax);
+    var st;
+    if(m)st="moot";
+    else if(isMulti(ax))st=p.length?(p[0]+(p.length>1?" ×"+p.length:"")):"—";
+    else st=p.length?p[0]:"—";
+    h+='<button class="slot'+(cur?" cur":"")+(p.length&&!m?" done":"")+(m?" moot":"")+'" data-ax="'+ax.id+'"'+
+       (m?' title="'+esc(m).replace(/"/g,"&quot;")+'"':'')+'>'+
+       '<div class="ax">'+esc(ax.id)+'</div><div class="st">'+(m?"moot":esc(st))+'</div></button>';
+  }
+  document.getElementById("slots").innerHTML=h;
+  var done=0,tot=0;
+  for(var i=0;i<MOCKUP.axes.length;i++){var id=MOCKUP.axes[i].id;
+    if(moot(id))continue;tot++;if(picks(id).length)done++;}
+  var pb=document.getElementById("picksb");
+  pb.textContent=(done===tot&&tot>0)?"Done — copy design prompt":"Copy design prompt · "+done+" / "+tot;
+  pb.classList.toggle("done",done===tot&&tot>0);
+}
+/* combination thumbnail in the picks panel: capped so the panel stays a panel;
+   click it to see the combination big */
+function drawCombo(){
+  var box=document.querySelector("#combo .box"),d=vpDims();
+  var k=Math.min(S.comboScale||0.4,420/d.w,320/d.h);
+  box.style.width=Math.round(d.w*k)+"px";box.style.height=Math.round(d.h*k)+"px";
+  box.innerHTML='<div class="sc" style="width:'+d.w+'px;height:'+d.h+'px;transform:scale('+k+')">'+
+    stack(setFor(),"",null)+'</div>';
+}
+function drawComboZoom(){
+  var box=document.getElementById("czbox"),d=vpDims();
+  var k=Math.min((window.innerWidth-120)/d.w,(window.innerHeight-140)/d.h,1);
+  box.style.width=Math.round(d.w*k)+"px";box.style.height=Math.round(d.h*k)+"px";
+  box.innerHTML='<div class="sc" style="width:'+d.w+'px;height:'+d.h+'px;transform:scale('+k+')">'+
+    stack(setFor(),"",null)+'</div>';
+  document.getElementById("czcap").textContent=
+    "your combination — "+(k>0.995?"1:1":"fit "+Math.round(k*100)+"%");
+}
+/* recipe: empty until the first pick; one section per decided axis; trailing UNDECIDED.
+   Single mode: "[axis] id - name" + deltas (+ per-option note, + axis note).
+   Multi mode: header line "mode: refine (multi-select)", then per axis
+   "[axis] id1 + id2" and one indented block per checked id, in check order. */
+function recipe(){
+  var L=[],und=[],ro=[],any=false,mu=anyMulti();
+  function block(id,ind){
+    var r=MOCKUP.recipeFor(id)||[];
+    for(var j=0;j<r.length;j++)L.push(ind+r[j]);
+    var on=(state.onotes[id]||"").trim();if(on)L.push(ind+"option note: "+on);
+  }
+  for(var i=0;i<MOCKUP.axes.length;i++){
+    var ax=MOCKUP.axes[i],pk=picks(ax.id),m=moot(ax.id),ox=outs(ax.id);
+    if(m) continue;
+    /* ruled-out slides carry their own note too: "no, but keep the icon" is an amendment */
+    for(var q=0;q<ox.length;q++){var on=(state.onotes[ox[q]]||"").trim();ro.push(ox[q]+(on?" (note: "+on+")":""));}
+    if(!pk.length){und.push(ax.id);continue;}
+    any=true;
+    if(isMulti(ax)){
+      L.push("["+ax.id+"] "+pk.join(" + "));
+      for(var k=0;k<pk.length;k++){L.push("  "+pk[k]+" - "+optById(pk[k]).name);block(pk[k],"    ");}
+    }else{
+      L.push("["+ax.id+"] "+pk[0]+" - "+optById(pk[0]).name);block(pk[0],"  ");
+    }
+    var n=(state.notes[ax.id]||"").trim();if(n)L.push("  note: "+n);
+    L.push("");
+  }
+  var g=(state.gnote||"").trim();
+  if(!any&&!ro.length&&!g) return "Pick an option to build the recipe.";
+  if(mu) L.unshift("mode: refine (multi-select)","");
+  L.push("UNDECIDED: "+(und.length?und.join(", "):"none"));
+  if(ro.length) L.push("RULED OUT: "+ro.join(", "));
+  if(g){L.push("");L.push("OVERALL NOTES:");
+    var gl=g.split("\n");for(var gi=0;gi<gl.length;gi++)L.push("  "+gl[gi]);}
+  return L.join("\n");
+}
+/* Effective state: the chosen one (WANT) unless the current option declares it unavailable,
+   then the first state it supports. A slide is never drawn in a state that makes no sense. */
+function naOf(ax,opt){var r={},k,a=ax.unavailable||{},o=opt.unavailable||{};
+  for(k in a)if(a.hasOwnProperty(k))r[k]=a[k];for(k in o)if(o.hasOwnProperty(k))r[k]=o[k];return r;}
+function naMap(){var d=deck();return (d.length&&!TODAYMODE)?naOf(d[CUR].ax,d[CUR].opt):{};}
+/* Pinned state: entering an axis selects axis.state; an option with its own state selects
+   it, and leaving it for a sibling falls back to axis.state. Walking siblings otherwise
+   keeps whatever the user toggled to. NOAUTO lets the selftest drive WANT directly. */
+var LASTAX=null,LASTOPT=null,LASTOWN=false,NOAUTO=false;
+function pinState(){var d=deck();if(!d.length||TODAYMODE||NOAUTO)return;
+  var c=d[CUR];if(c.opt.id===LASTOPT)return;
+  if(c.opt.state)WANT=c.opt.state;
+  else if(c.ax.state&&(c.ax.id!==LASTAX||LASTOWN))WANT=c.ax.state;
+  LASTAX=c.ax.id;LASTOPT=c.opt.id;LASTOWN=!!c.opt.state;}
+function resolveST(){var na=naMap();ST=WANT;
+  if(na[ST])for(var i=0;i<MOCKUP.states.length;i++)if(!na[MOCKUP.states[i].id]){ST=MOCKUP.states[i].id;break;}}
+function paint(){
+  var d=deck();clampCur();pinState();resolveST();drawStates();
+  if(d.length&&!TODAYMODE)state.cur=d[CUR].opt.id;
+  drawHead();drawSlide();drawRail();
+  document.getElementById("out").value=recipe();
+  if(ovOpen("picks"))drawCombo();
+  if(ovOpen("combozoom"))drawComboZoom();
+  save();
+}
+
+/* ---- overlays ---- */
+function ovOpen(id){return document.getElementById(id).classList.contains("on");}
+function anyOv(){return ovOpen("picks")||ovOpen("help")||ovOpen("combozoom");}
+function openOv(id){document.getElementById(id).classList.add("on");
+  if(id==="picks")drawCombo();if(id==="combozoom")drawComboZoom();}
+function closeOv(id){document.getElementById(id).classList.remove("on");}
+function closeOvs(){closeOv("picks");closeOv("help");closeOv("combozoom");}
+
+/* ---- compare: hold C anywhere; both layers live in the slide's stack ---- */
+function endHold(){document.body.classList.remove("cmpall");}
+document.addEventListener("keyup",function(e){if(e.key==="c"||e.key==="C")endHold();});
+window.addEventListener("blur",endHold);
+
+/* ---- keys ---- */
+document.addEventListener("keydown",function(e){
+  var typing=/input|textarea/i.test(e.target.tagName);
+  if(e.key==="Escape"){
+    if(ovOpen("combozoom")){closeOv("combozoom");return;} /* back to the panel beneath */
+    if(ovOpen("picks")||ovOpen("help")){closeOvs();return;}
+    var ae=document.activeElement;
+    if(ae&&/input|textarea/i.test(ae.tagName))ae.blur();
+    return;
+  }
+  if(typing)return;
+  if(e.key==="c"||e.key==="C"){document.body.classList.add("cmpall");return;}
+  if(anyOv())return;
+  if(e.key==="ArrowRight"){e.preventDefault();step(1);return;}
+  if(e.key==="ArrowLeft"){e.preventDefault();step(-1);return;}
+  var d=deck();if(!d.length||TODAYMODE)return;
+  var cur=d[CUR];
+  if(e.key==="Enter"||e.key===" "){e.preventDefault();commitPick();return;}
+  if(e.key==="x"||e.key==="X"){e.preventDefault();cancelAdv();
+    var now=ruleOut(cur.opt.id);paint();if(now)step(1);return;}
+  if(e.key==="n"||e.key==="N"){e.preventDefault();
+    document.getElementById("noteIn").focus();return;}
+  if(e.key==="w"||e.key==="W"){e.preventDefault();toggleWhy();return;}
+  if(e.key==="?"){e.preventDefault();openOv("help");return;}
+});
+function toggleWhy(){
+  var wr=document.getElementById("whyrow");
+  wr.classList.toggle("on");drawHead();
+}
+
+/* ---- mouse ---- */
+document.getElementById("slide").addEventListener("click",function(){
+  commitPick();
+});
+document.getElementById("prevb").addEventListener("click",function(){step(-1);this.blur();});
+document.getElementById("nextb").addEventListener("click",function(){step(1);this.blur();});
+document.getElementById("whyb").addEventListener("click",function(){toggleWhy();this.blur();});
+document.getElementById("slots").addEventListener("click",function(e){
+  var s=e.target.closest?e.target.closest(".slot"):null;
+  if(s&&!s.classList.contains("moot"))goToAxis(s.getAttribute("data-ax"));
+});
+/* the done button: copy the block AND show the panel, so the copy is visible */
+document.getElementById("picksb").addEventListener("click",function(){
+  openOv("picks");copyOut(document.getElementById("copy"));});
+(function(){var ovs=document.querySelectorAll(".ov");
+  for(var i=0;i<ovs.length;i++)ovs[i].addEventListener("click",function(e){if(e.target===this)closeOv(this.id);});
+  var cls=document.querySelectorAll("[data-close]");
+  for(var j=0;j<cls.length;j++)cls[j].addEventListener("click",function(){closeOv(this.getAttribute("data-close"));});})();
+document.getElementById("combo").addEventListener("click",function(e){
+  if(e.target.closest&&e.target.closest(".box"))openOv("combozoom");
+});
+
+/* ---- state toggle, notes, copy, reset, theme ---- */
+document.getElementById("states").addEventListener("click",function(e){
+  var b=e.target.closest?e.target.closest("button[data-st]"):null;if(!b)return;
+  if(b.disabled)return;
+  WANT=ST=b.getAttribute("data-st");paint();
+});
+function drawStates(){
+  var h="";for(var i=0;i<MOCKUP.states.length;i++){var s=MOCKUP.states[i];
+    var why=naMap()[s.id];
+    h+='<button data-st="'+s.id+'" class="'+(ST===s.id?"on":"")+'"'+
+       (why?' disabled title="'+esc(why)+'"':'')+'>'+esc(s.label)+'</button>';}
+  document.getElementById("states").innerHTML=h;
+  var v="";if(VPS)for(var j=0;j<VPS.length;j++)
+    v+='<button data-vp="'+VPS[j].id+'" class="'+(VP===VPS[j].id?"on":"")+'">'+esc(VPS[j].label)+'</button>';
+  var vs=document.getElementById("vps");vs.innerHTML=v;vs.style.display=VPS?"":"none";
+}
+document.getElementById("vps").addEventListener("click",function(e){
+  var b=e.target.closest?e.target.closest("button[data-vp]"):null;if(!b)return;
+  VP=b.getAttribute("data-vp");drawStates();paint();
+});
+document.getElementById("noteIn").addEventListener("input",function(){
+  var d=deck();if(!d.length||TODAYMODE)return;
+  state.onotes[d[CUR].opt.id]=this.value;
+  document.getElementById("out").value=recipe();save();
+});
+document.getElementById("gnote").addEventListener("input",function(){
+  state.gnote=this.value;
+  document.getElementById("out").value=recipe();save();
+});
+function copyOut(b){
+  var ta=document.getElementById("out"),t=ta.value,prev=b.textContent;
+  function ok(){b.textContent="Copied";setTimeout(function(){b.textContent=prev;},1500);}
+  function fb(){ta.removeAttribute("readonly");ta.select();try{document.execCommand("copy");ok();}catch(e){}
+    ta.setAttribute("readonly","readonly");}
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(ok,fb);else fb();
+}
+document.getElementById("copy").addEventListener("click",function(){copyOut(this);});
+document.getElementById("reset").addEventListener("click",function(){
+  state={sel:{},notes:{},onotes:{},out:{},theme:state.theme,cur:null,gnote:""};
+  try{localStorage.removeItem(MOCKUP.key);}catch(e){}
+  document.getElementById("gnote").value="";
+  CUR=0;save();paint();
+});
+function paintTheme(){document.getElementById("theme").textContent=
+  document.body.classList.contains("dark")?"Light page":"Dark page";}
+document.getElementById("theme").addEventListener("click",function(){
+  var dark=document.body.classList.toggle("dark");state.theme=dark?"dark":"light";save();paintTheme();});
+window.addEventListener("resize",function(){drawSlide();if(ovOpen("combozoom"))drawComboZoom();});
+
+/* ---- boot ---- */
+document.getElementById("railhd").textContent=MOCKUP.title;
+document.getElementById("helpintro").textContent=MOCKUP.intro||"";
+if(MOCKUP.footer)document.getElementById("footbody").innerHTML=MOCKUP.footer;
+load();
+if(state.theme==="light")document.body.classList.remove("dark");else document.body.classList.add("dark");
+paintTheme();
+document.getElementById("gnote").value=state.gnote||"";
+/* ?st=<stateId> selects a state before first paint; ?zoom=<id> opens the deck on that
+   slide (__today = the labelled baseline slide, __combo = the picks panel) —
+   one URL per headless screenshot. */
+(function(){
+  var m=/[?&]st=([\w-]+)/.exec(location.search);
+  if(m){for(var i=0;i<MOCKUP.states.length;i++)if(MOCKUP.states[i].id===m[1])WANT=ST=m[1];}
+  var v=/[?&]vp=([\w-]+)/.exec(location.search);
+  if(v&&VPS){for(var j=0;j<VPS.length;j++)if(VPS[j].id===v[1])VP=v[1];}
+})();
+if(state.cur){var i0=slideOf(state.cur);if(i0>=0)CUR=i0;}
+(function(){
+  var m=/[?&]zoom=([\w-]+)/.exec(location.search);
+  if(!m)return;
+  if(m[1]==="__today"){TODAYMODE=true;return;}
+  if(m[1]==="__combo"){openOv("picks");return;}
+  var i=slideOf(m[1]);if(i>=0)CUR=i;
+})();
+/* an explicit ?st= beats the pinned state on the slide the page opens on */
+if(/[?&]st=/.test(location.search)){var d0=deck();if(d0.length){clampCur();
+  LASTAX=d0[CUR].ax.id;LASTOPT=d0[CUR].opt.id;LASTOWN=!!d0[CUR].opt.state;}}
+drawStates();paint();
+
+/* ============================================================================
+   ?selftest — how a future agent verifies without a browser driver.
+   Walks every slide in every declared state and reports on screen.
+   ============================================================================ */
+function selftest(){
+  var fails=[],checks=0;
+  function ck(cond,msg){checks++;if(!cond)fails.push(msg);}
+  function rects(el){
+    /* leaf elements carrying visible text */
+    var out=[],all=el.querySelectorAll("*"),clipCache=[];
+    function clipOf(p){ /* clip rect of an overflow-hidden ancestor, computed once per surface */
+      for(var c=0;c<clipCache.length;c++)if(clipCache[c].el===p)return clipCache[c].r;
+      var pcs=getComputedStyle(p),r=null;
+      if(pcs.overflowX!=="visible"||pcs.overflowY!=="visible")r=p.getBoundingClientRect();
+      clipCache.push({el:p,r:r});return r;
+    }
+    for(var i=0;i<all.length;i++){
+      var n=all[i];
+      if(n.children.length)continue;
+      if(n.classList&&n.classList.contains("vlab"))continue; /* the shell's own TODAY label
+        overlays the slide during compare — it must not count as surface text */
+      var tx=(n.textContent||"").trim();
+      if(!tx)continue;
+      /* the TEXT's box, not the element's: a block-level leaf ("Deckmaster" in a full-width
+         heading) has an element rect spanning the whole column, which reported a collision
+         with anything sharing that band. A Range over the contents gives the glyphs' own box. */
+      var r=n.getBoundingClientRect();
+      try{var rg=document.createRange();rg.selectNodeContents(n);
+        var rr=rg.getBoundingClientRect();
+        if(rr&&rr.width>=1&&rr.height>=1){
+          /* ...clipped by the leaf's OWN box: a truncating cell (text-overflow:ellipsis)
+             has a Range wider than the glyphs it actually paints. */
+          var lb=r;
+          r={left:Math.max(rr.left,lb.left),top:Math.max(rr.top,lb.top),
+             right:Math.min(rr.right,lb.right),bottom:Math.min(rr.bottom,lb.bottom)};
+          if(r.right-r.left<1||r.bottom-r.top<1)continue;
+        }}catch(e){}
+      if(r.width<1||r.height<1)continue;
+      if(getComputedStyle(n).visibility==="hidden")continue;
+      /* clip to every overflow-hidden ancestor up to the surface: text scrolled or
+         clipped out of view cannot visibly overlap anything */
+      var L=r.left,T=r.top,R=r.right,B=r.bottom,p=n.parentElement;
+      while(p&&p!==el){
+        var pr=clipOf(p);
+        if(pr){L=Math.max(L,pr.left);T=Math.max(T,pr.top);R=Math.min(R,pr.right);B=Math.min(B,pr.bottom);}
+        p=p.parentElement;
+      }
+      if(R-L<1||B-T<1)continue;
+      /* occlusion: text under a later-painted opaque layer (a scrim, a popover, a modal)
+         overlaps nothing visibly. Hidden compare layers are pointer-events:none, so they
+         never enter the hit stack.
+         Cover is judged at the leaf's CENTRE, not by full containment: a popover anchored
+         over a dense surface covers most leaves only PARTIALLY, and requiring containment
+         reported every legitimate overlay as a text collision. A leaf whose centre sits
+         under an opaque panel is not a readable collision; two text nodes colliding in the
+         same flow — the thing this check exists for — still have both centres exposed. */
+      var stackEls=document.elementsFromPoint((L+R)/2,(T+B)/2),cov=false;
+      for(var k=0;k<stackEls.length;k++){
+        var a=stackEls[k];
+        if(a===n||a.contains(n))break;
+        if(!el.contains(a))continue;
+        var bgm=/rgba?\(([^)]+)\)/.exec(getComputedStyle(a).backgroundColor),chn=bgm?bgm[1].split(","):null;
+        var al=chn?(chn.length>3?parseFloat(chn[3]):1):0;
+        if(al>0.5){cov=true;break;}
+      }
+      if(cov)continue;
+      out.push({r:{left:L,top:T,right:R,bottom:B},t:tx});
+    }
+    return out;
+  }
+  function overlap(a,b){
+    var x=Math.min(a.right,b.right)-Math.max(a.left,b.left);
+    var y=Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top);
+    return (x>1&&y>1)?(x*y):0;
+  }
+  function key(k){document.dispatchEvent(new KeyboardEvent("keydown",{key:k,bubbles:true}));}
+  var states=MOCKUP.states.map(function(s){return s.id;});
+  var vplist=VPS?VPS.map(function(v){return v.id;}):[null];
+  var keep={st:WANT,vp:VP,sel:state.sel,onotes:state.onotes,out:state.out,notes:state.notes,cur:CUR};
+  state.sel={};state.onotes={};state.out={};state.notes={};closeOvs();TODAYMODE=false;
+
+  /* 0. pinned states name a real state that the option can actually be drawn in */
+  var stIds={};for(var s0=0;s0<states.length;s0++)stIds[states[s0]]=1;
+  for(var a0=0;a0<MOCKUP.axes.length;a0++){var A0=MOCKUP.axes[a0];
+    if(A0.state)ck(stIds[A0.state],"axis "+A0.id+" state '"+A0.state+"' is not in MOCKUP.states");
+    for(var k0 in (A0.unavailable||{}))ck(stIds[k0],"axis "+A0.id+" unavailable '"+k0+"' is not in MOCKUP.states");
+    for(var o0i=0;o0i<A0.options.length;o0i++){var O0=A0.options[o0i],pin=O0.state||A0.state;
+      if(O0.state)ck(stIds[O0.state],"["+O0.id+"] state '"+O0.state+"' is not in MOCKUP.states");
+      if(pin)ck(!naOf(A0,O0)[pin],"["+O0.id+"] pinned state '"+pin+"' is unavailable for it");
+      var allNa=true;for(var s1=0;s1<states.length;s1++)if(!naOf(A0,O0)[states[s1]]){allNa=false;break;}
+      ck(!allNa,"["+O0.id+"] every state is unavailable");}
+  }
+  /* entering each axis from another selects its pinned state */
+  var Dp=deck();
+  for(var dp=0;dp<Dp.length;dp++){var cp=Dp[dp],pin2=cp.opt.state||cp.ax.state;if(!pin2)continue;
+    if(dp>0&&Dp[dp-1].ax===cp.ax&&!cp.opt.state&&!Dp[dp-1].opt.state)continue;
+    LASTAX=LASTOPT=null;LASTOWN=false;WANT=null;CUR=dp;paint();
+    ck(ST===pin2,"["+cp.opt.id+"] opened in "+ST+", not its pinned state "+pin2);}
+  NOAUTO=true;
+
+  /* 1. every slide of every state AT EVERY VIEWPORT: slide box == real*scale, surface
+        not clipped, exactly one compare layer visible, no two text nodes overlapping */
+  var scanned=0,slide=document.getElementById("slide");
+  var D=deck();
+  for(var vi=0;vi<vplist.length;vi++){
+  if(VPS)VP=vplist[vi];
+  for(var si=0;si<states.length;si++){
+    WANT=states[si];
+    for(var di=0;di<D.length;di++){
+      CUR=di;paint();
+      var una=naOf(D[di].ax,D[di].opt);
+      ck(!una[ST],"["+D[di].opt.id+"] drawn in unavailable state "+ST);
+      ck(!document.querySelector('#states button.on:disabled'),"["+D[di].opt.id+"] disabled state marked on");
+      if(una[WANT])continue;
+      scanned++;
+      var tag="["+ST+(VP?" "+VP:"")+" "+D[di].opt.id+"] ",vd2=vpDims();
+      var sc=slide.querySelector(".sc"),m=/scale\(([\d.]+)\)/.exec(sc.style.transform||""),k2=m?parseFloat(m[1]):1;
+      ck(Math.abs(slide.clientWidth-Math.round(vd2.w*k2))<=2,tag+"slide width != real*scale");
+      ck(Math.abs(slide.clientHeight-Math.round(vd2.h*k2))<=2,tag+"slide height != real*scale");
+      var now=slide.querySelector(".stack > .now"),old=slide.querySelector(".stack > .orig");
+      if(now&&old){
+        var oa=parseFloat(getComputedStyle(now).opacity),ob=parseFloat(getComputedStyle(old).opacity);
+        ck((oa>0.5)!==(ob>0.5),tag+"both/neither compare layers visible");
+        ck(getComputedStyle(now).position==="absolute"&&getComputedStyle(old).position==="absolute",
+           tag+"compare layer not absolutely positioned (would stack in flow)");
+      }
+      var s2=slide.querySelector(".stack > .now .surf, .stack > .now > *:first-child");
+      if(s2)ck(s2.scrollWidth<=s2.clientWidth+1,tag+"surface content wider than its window ("+
+         s2.scrollWidth+" > "+s2.clientWidth+")");
+      var rs=rects(now||slide);
+      for(var p2=0;p2<rs.length;p2++)for(var q2=p2+1;q2<rs.length;q2++){
+        if(overlap(rs[p2].r,rs[q2].r)>4){
+          fails.push(tag+'text overlap: "'+rs[p2].t.slice(0,24)+'" / "'+rs[q2].t.slice(0,24)+'"');
+          p2=rs.length;break;
+        }
+      }
+    }
+  }
+  }
+  WANT=keep.st;VP=keep.vp;paint();
+
+  /* 2. the page never scrolls and the column fits the viewport; at >= 1366x768 the whole
+        deck (question header + option line + slide + command bar) must be visible.
+        Below that the fit check is reported as skipped, not passed. */
+  CUR=0;paint();
+  var vw=window.innerWidth,vh=window.innerHeight,fold="";
+  ck(document.documentElement.scrollWidth<=vw+1&&document.documentElement.scrollHeight<=vh+1,
+     "the page scrolls ("+document.documentElement.scrollWidth+"x"+document.documentElement.scrollHeight+
+     " in "+vw+"x"+vh+")");
+  if(vw>=1366&&vh>=768){
+    var cr=document.getElementById("cmd").getBoundingClientRect(),
+        sr=slide.getBoundingClientRect(),
+        qr=document.getElementById("qtitle").getBoundingClientRect();
+    ck(Math.abs(cr.bottom-vh)<=2,"command bar not pinned to the viewport bottom");
+    ck(qr.top>=0&&sr.top>=qr.bottom-2,"question header not above the slide");
+    ck(sr.bottom<=cr.top+2,"slide not fully above the command bar (slide bottom "+
+       Math.round(sr.bottom)+" > bar top "+Math.round(cr.top)+")");
+    fold=" · deck fits at "+vw+"x"+vh;
+  } else fold=" · fit check SKIPPED (viewport "+vw+"x"+vh+" < 1366x768)";
+
+  /* 3. recipe contract */
+  ck(recipe()==="Pick an option to build the recipe.","recipe not empty with zero picks");
+
+  /* 4. deck navigation. Guards: an axis with a single option skips the pair assertions
+        rather than reading options[1] that does not exist (spec pages lock one option
+        per axis and still run this selftest). */
+  var ax0=null;for(var ai=0;ai<MOCKUP.axes.length;ai++)
+    if(!moot(MOCKUP.axes[ai].id)&&MOCKUP.axes[ai].options.length>=2){ax0=MOCKUP.axes[ai];break;}
+  var keepMultiPage=MOCKUP.multi;
+  MOCKUP.multi=false;
+  if(ax0){
+    var keepMultiAxis=ax0.multi;delete ax0.multi;
+    var o0=ax0.options[0],o1=ax0.options[1];
+    goToAxis(ax0.id);
+    ck(deck()[CUR].opt.id===o0.id,"goToAxis did not land on the first slide");
+    ck(document.getElementById("qtitle").textContent===ax0.question,"question headline does not name the axis question");
+    key("ArrowLeft");
+    var atStart=(slideOf(o0.id)===0);
+    if(atStart)ck(deck()[CUR].opt.id===o0.id,"ArrowLeft wrapped past the first slide");
+    goToAxis(ax0.id);
+    key("ArrowRight");
+    ck(deck()[CUR].opt.id===o1.id,"ArrowRight did not move to the next slide");
+    ck(document.getElementById("opos").textContent.indexOf("slide 2 of "+ax0.options.length)===0,
+       "position line did not follow ArrowRight: "+document.getElementById("opos").textContent);
+    ck(document.getElementById("oname").textContent===o1.name,"option line does not name the slide");
+    key("ArrowLeft");ck(deck()[CUR].opt.id===o0.id,"ArrowLeft did not move back");
+    /* compare persists across a step */
+    document.body.classList.add("cmpall");key("ArrowRight");
+    ck(document.body.classList.contains("cmpall"),"compare layer did not persist across a step");
+    document.body.classList.remove("cmpall");
+    /* pick: Enter marks, ring shows, rail updates, an auto-advance is queued */
+    key("Enter");
+    ck(picked(ax0.id,o1.id),"Enter did not pick the slide");
+    ck(document.body.classList.contains("sel"),"picked slide does not carry the mark");
+    ck(document.getElementById("omark").textContent.indexOf("picked")>=0,"option line lacks the picked mark");
+    var slot=document.querySelector('#rail .slot[data-ax="'+ax0.id+'"]');
+    ck(slot&&slot.classList.contains("done"),"rail slot not marked done after the pick");
+    ck(recipe().indexOf("["+ax0.id+"] "+o1.id+" - ")===0,"copy-back did not carry the pick");
+    ck(document.getElementById("out").value===recipe(),"recipe textarea not refreshed after the pick");
+    ck(ADV!==null||ovOpen("picks"),"Enter did not queue the auto-advance");
+    /* an arrow in the window cancels the jump and walks linearly */
+    key("ArrowRight");
+    ck(ADV===null,"ArrowRight did not cancel the auto-advance");
+    ck(deck()[CUR-1]&&deck()[CUR-1].opt.id===o1.id||ovOpen("picks"),"ArrowRight after a pick did not walk to the adjacent slide");
+    closeOvs();
+    /* the jump itself lands on the next question's first slide */
+    advanceFrom(o1.id);
+    var nx=deck()[CUR];
+    if(!ovOpen("picks"))ck(nx.ax!==ax0&&deck()[CUR-1].ax!==nx.ax,"auto-advance did not land on the next question's first slide");
+    closeOvs();
+    goToAxis(ax0.id);
+    ck(deck()[CUR].opt.id===o1.id,"goToAxis did not land on the picked slide");
+    key("ArrowLeft");key("ArrowRight");
+    ck(deck()[CUR].opt.id===o1.id,"arrows did not walk an answered question slide by slide");
+    ck(recipe().indexOf("mode: refine")<0,"single mode recipe carries the multi header");
+    /* rule out: X recedes the slide, drops any pick on it, steps on, lists it; Enter puts it back */
+    goToAxis(ax0.id);ck(picked(ax0.id,o1.id),"pick lost before the rule-out exercise");
+    key("x");
+    ck(isOut(o1.id),"X did not rule the slide out");
+    ck(!picked(ax0.id,o1.id),"ruled-out slide kept its pick");
+    ck(recipe().indexOf("RULED OUT: "+o1.id)>=0,"copy-back lacks the RULED OUT line");
+    var backI=slideOf(o1.id);CUR=backI;paint();
+    ck(document.body.classList.contains("rout"),"ruled-out slide does not recede");
+    key("Enter");
+    ck(!isOut(o1.id)&&picked(ax0.id,o1.id),"picking a ruled-out slide did not put it back");
+    /* notes: the line is permanent, N focuses it, it names its option, Esc leaves;
+       the overall-notes box on the picks panel reaches the copy-back too */
+    ck(document.getElementById("noterow").offsetHeight>0,"note line not visible under the stage");
+    key("n");
+    var nin=document.getElementById("noteIn");
+    ck(document.activeElement===nin,"N did not focus the note");
+    ck(document.getElementById("notelab").textContent.indexOf(deck()[CUR].opt.id)>=0,
+       "note label does not name the option it annotates");
+    nin.value="try the icon from the other slide";
+    nin.dispatchEvent(new Event("input",{bubbles:true}));
+    ck(recipe().indexOf("option note: try the icon")>=0,"copy-back lacks the option note");
+    key("Escape");
+    ck(document.activeElement!==nin,"Esc did not leave the note");
+    var gn=document.getElementById("gnote");
+    gn.value="prefer quieter labels overall\nfeedback: revisit later";
+    gn.dispatchEvent(new Event("input",{bubbles:true}));
+    ck(recipe().indexOf("OVERALL NOTES:\n  prefer quieter labels overall\n  feedback: revisit later")>=0,
+       "copy-back lacks the overall notes");
+    gn.value="";gn.dispatchEvent(new Event("input",{bubbles:true}));
+    /* why row */
+    key("w");
+    ck(document.getElementById("whyrow").classList.contains("on"),"W did not open the why row");
+    ck(document.getElementById("whyrow").textContent.indexOf("Why:")>=0,"why row lacks the premise");
+    key("w");
+    /* multi ("refine") mode: Enter toggles, no auto-advance, ordered ids in the copy-back */
+    MOCKUP.multi=true;state.sel={};state.onotes={};state.out={};
+    goToAxis(ax0.id);
+    key("Enter");key("ArrowRight");key("Enter");
+    ck(picked(ax0.id,o0.id)&&picked(ax0.id,o1.id),"multi mode did not keep both checks");
+    ck(ADV===null,"multi mode queued an auto-advance");
+    ck(deck()[CUR].ax===ax0||ax0.options.length===2,"multi question skipped on ArrowRight");
+    var r=recipe();
+    ck(r.indexOf("mode: refine (multi-select)")===0,"multi recipe lacks the mode header");
+    ck(r.indexOf("["+ax0.id+"] "+o0.id+" + "+o1.id)>=0,"multi recipe does not list both ids in order");
+    key("Enter");ck(!picked(ax0.id,o1.id)&&picked(ax0.id,o0.id),"Enter did not uncheck in multi mode");
+    /* axis-level override beats the page default */
+    ax0.multi=false;ck(!isMulti(ax0),"axis.multi=false did not override MOCKUP.multi");
+    ax0.multi=true;MOCKUP.multi=false;ck(isMulti(ax0),"axis.multi=true did not override MOCKUP.multi");
+    if(keepMultiAxis===undefined)delete ax0.multi;else ax0.multi=keepMultiAxis;
+  }
+  MOCKUP.multi=keepMultiPage;
+
+  /* 5. rail, the done button and overlays */
+  state.sel={};state.onotes={};state.out={};CUR=0;cancelAdv();paint();
+  var slots=document.querySelectorAll("#rail .slot");
+  ck(slots.length===MOCKUP.axes.length,"rail does not carry one slot per question");
+  ck(document.querySelectorAll("#rail .slot.cur").length===1,"rail does not mark exactly one current question");
+  document.getElementById("picksb").click();
+  ck(ovOpen("picks"),"Copy design prompt button did not open the panel");
+  closeOvs();
+  /* deciding the last open question opens the panel by itself */
+  for(var pi=0;pi<MOCKUP.axes.length;pi++){var pax=MOCKUP.axes[pi];
+    if(moot(pax.id))continue;goToAxis(pax.id);key("Enter");}
+  ck(ovOpen("picks"),"deciding the last question did not open the picks panel");
+  closeOvs();
+  state.sel={};state.onotes={};state.out={};CUR=0;cancelAdv();paint();
+  openOv("picks");
+  ck(ovOpen("picks"),"picks panel did not open");
+  ck(!!document.querySelector("#combo .box .stack"),"picks panel lacks the combination");
+  var cb=document.querySelector("#combo .box");
+  ck(cb.clientWidth<=440&&cb.clientHeight<=340,"combination thumbnail larger than its panel cap");
+  ck(document.getElementById("out").value===recipe(),"picks panel copy-back stale");
+  /* the combination thumbnail zooms */
+  cb.click();
+  ck(ovOpen("combozoom"),"combination click did not open the big view");
+  ck(document.getElementById("czbox").clientWidth>cb.clientWidth,"big view not larger than the thumbnail");
+  key("Escape");
+  ck(!ovOpen("combozoom")&&ovOpen("picks"),"Esc did not close only the big view");
+  key("Escape");ck(!ovOpen("picks"),"Esc did not close the picks panel");
+  key("?");ck(ovOpen("help"),"? did not open the keys panel");
+  key("Escape");ck(!ovOpen("help"),"Esc did not close the keys panel");
+
+  /* 6. state toggle drives the slide live */
+  var alt=(Array.prototype.filter.call(document.querySelectorAll('#states button:not(:disabled)'),
+    function(b){return b.getAttribute("data-st")!==ST;})[0]||document.querySelector('#states button.on')).getAttribute("data-st");
+  slide.querySelector(".sc").setAttribute("data-probe","stale");
+  document.querySelector('#states button[data-st="'+alt+'"]').click();
+  ck(ST===alt,"state click did not switch state");
+  ck(document.querySelector("#states button.on").getAttribute("data-st")===alt,"state toggle not marked on");
+  ck(!slide.querySelector('[data-probe]'),"slide did not re-render on state click");
+  WANT=keep.st;paint();
+
+  /* 7. viewports drive the slide's geometry */
+  if(VPS&&VPS.length>1){
+    var dA=vpDims();
+    document.querySelector('#vps button[data-vp="'+VPS[1].id+'"]').click();
+    ck(VP===VPS[1].id,"viewport click did not switch");
+    var dB=vpDims();
+    ck(dA.w!==dB.w||dA.h!==dB.h,"second viewport has the same geometry as the first");
+    var scv=slide.querySelector(".sc"),mv=/scale\(([\d.]+)\)/.exec(scv.style.transform||""),kv=mv?parseFloat(mv[1]):1;
+    ck(Math.abs(slide.clientWidth-Math.round(dB.w*kv))<=2,"slide did not re-render at the new viewport");
+    document.querySelector('#vps button[data-vp="'+keep.vp+'"]').click();
+  } else if(!VPS)
+    ck(document.getElementById("vps").style.display==="none","viewport toggle drawn with no viewports");
+
+  /* restore */
+  state.sel=keep.sel;state.onotes=keep.onotes;state.out=keep.out;state.notes=keep.notes;
+  NOAUTO=false;var dk=deck();if(dk.length){LASTAX=dk[Math.min(keep.cur,dk.length-1)].ax.id;LASTOPT=dk[Math.min(keep.cur,dk.length-1)].opt.id;}
+  CUR=keep.cur;WANT=keep.st;VP=keep.vp;TODAYMODE=false;cancelAdv();closeOvs();drawStates();paint();
+
+  var el=document.getElementById("selftest");
+  el.className="on "+(fails.length?"fail":"pass");
+  el.textContent=(fails.length?"SELFTEST FAIL — "+fails.length+" problem(s)\n":"SELFTEST PASS\n")+
+    checks+" assertion groups over "+states.length+" states"+(VPS?" × "+vplist.length+" viewports":"")+
+    " · text overlap scanned on "+scanned+" slides"+fold+"\n"+
+    (fails.length?fails.slice(0,60).join("\n")+(fails.length>60?"\n… and "+(fails.length-60)+" more":""):
+    "page never scrolls · slide matches real*scale · one compare layer visible · no surface clipped · no text overlap · deck walk, pick-and-advance, rule-out, notes, refine mode, rail, picks panel, combination zoom, state and viewport toggles exercised");
+}
+if(/[?&]selftest/.test(location.search)) setTimeout(selftest,60);
+</script>
+</body>
+</html>
