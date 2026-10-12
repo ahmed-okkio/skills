@@ -31,6 +31,8 @@ Copies the skills into your project or home directory as editable files, and let
 ## Skills
 
 - [ui-mockups](plugins/ahmed-skills/skills/ui-mockups/SKILL.md): mock up UI options for any surface (web, desktop, TUI, mobile) as standalone HTML decks, then narrow to one agreed design and a signable spec.
+- [to-spec](plugins/agentic-workflow/skills/to-spec/SKILL.md) (agentic-workflow): turn the current conversation into a spec of phased tracer-bullet stories with Gherkin acceptance criteria.
+- [implement](plugins/agentic-workflow/skills/implement/SKILL.md) (agentic-workflow): drive a to-spec spec to done story by story through the bundled `worker` and `validator` agents.
 
 ## Layout
 
