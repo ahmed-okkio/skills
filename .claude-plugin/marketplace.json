@@ -11,6 +11,12 @@
       "source": "./plugins/ahmed-skills",
       "description": "Ahmed's agent skills.",
       "category": "productivity"
+    },
+    {
+      "name": "agentic-workflow",
+      "source": "./plugins/agentic-workflow",
+      "description": "Spec-driven workflow: to-spec writes the spec, implement drives it through Worker and Validator agents.",
+      "category": "productivity"
     }
   ]
 }

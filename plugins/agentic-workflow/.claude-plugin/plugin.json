@@ -1,0 +1,16 @@
+{
+  "name": "agentic-workflow",
+  "version": "0.1.0",
+  "description": "Spec-driven workflow: to-spec writes the spec, implement drives it through Worker and Validator agents.",
+  "author": {
+    "name": "Ahmed",
+    "url": "https://github.com/ahmed-okkio"
+  },
+  "repository": "https://github.com/ahmed-okkio/skills",
+  "license": "MIT",
+  "skills": "./skills/",
+  "agents": [
+    "./agents/worker.md",
+    "./agents/validator.md"
+  ]
+}
