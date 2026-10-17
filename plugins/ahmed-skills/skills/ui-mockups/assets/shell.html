@@ -680,7 +680,7 @@ function commitPick(){
   var d=deck();if(!d.length||TODAYMODE)return;
   var cur=d[CUR],was=allDecided();
   pick(cur.ax.id,cur.opt.id);paint();
-  if(!was&&allDecided()){openOv("picks");return;}
+  if(!was&&allDecided()&&!isMulti(cur.ax)){openOv("picks");return;} /* refine mode keeps checking */
   if(isMulti(cur.ax)||!picked(cur.ax.id,cur.opt.id))return;
   var id=cur.opt.id;
   ADV=setTimeout(function(){ADV=null;if(!anyOv()&&deck()[CUR]&&deck()[CUR].opt.id===id)advanceFrom(id);},ADVANCE_MS);
@@ -981,6 +981,7 @@ function paintTheme(){document.getElementById("theme").textContent=
 document.getElementById("theme").addEventListener("click",function(){
   var dark=document.body.classList.toggle("dark");state.theme=dark?"dark":"light";save();paintTheme();});
 window.addEventListener("resize",function(){drawSlide();if(ovOpen("combozoom"))drawComboZoom();});
+if(window.ResizeObserver)new ResizeObserver(function(){drawSlide();}).observe(document.getElementById("stage"));
 
 /* ---- boot ---- */
 document.getElementById("railhd").textContent=MOCKUP.title;
@@ -1129,6 +1130,7 @@ function selftest(){
       scanned++;
       var tag="["+ST+(VP?" "+VP:"")+" "+D[di].opt.id+"] ",vd2=vpDims();
       var sc=slide.querySelector(".sc"),m=/scale\(([\d.]+)\)/.exec(sc.style.transform||""),k2=m?parseFloat(m[1]):1;
+      ck(k2>0.06,tag+"slide scale "+k2+" is at the 0.05 floor: the stage collapsed — look for unbalanced braces in tokens.css");
       ck(Math.abs(slide.clientWidth-Math.round(vd2.w*k2))<=2,tag+"slide width != real*scale");
       ck(Math.abs(slide.clientHeight-Math.round(vd2.h*k2))<=2,tag+"slide height != real*scale");
       var now=slide.querySelector(".stack > .now"),old=slide.querySelector(".stack > .orig");
@@ -1233,10 +1235,11 @@ function selftest(){
     ck(isOut(o1.id),"X did not rule the slide out");
     ck(!picked(ax0.id,o1.id),"ruled-out slide kept its pick");
     ck(recipe().indexOf("RULED OUT: "+o1.id)>=0,"copy-back lacks the RULED OUT line");
-    var backI=slideOf(o1.id);CUR=backI;paint();
+    var backI=slideOf(o1.id);closeOvs();CUR=backI;paint(); /* X on a question's last slide steps past the deck end */
     ck(document.body.classList.contains("rout"),"ruled-out slide does not recede");
     key("Enter");
     ck(!isOut(o1.id)&&picked(ax0.id,o1.id),"picking a ruled-out slide did not put it back");
+    closeOvs(); /* on a one-question page that pick decided the last question and opened the panel */
     /* notes: the line is permanent, N focuses it, it names its option, Esc leaves;
        the overall-notes box on the picks panel reaches the copy-back too */
     ck(document.getElementById("noterow").offsetHeight>0,"note line not visible under the stage");
@@ -1263,7 +1266,7 @@ function selftest(){
     key("w");
     /* multi ("refine") mode: Enter toggles, no auto-advance, ordered ids in the copy-back */
     MOCKUP.multi=true;state.sel={};state.onotes={};state.out={};
-    goToAxis(ax0.id);
+    closeOvs();goToAxis(ax0.id);
     key("Enter");key("ArrowRight");key("Enter");
     ck(picked(ax0.id,o0.id)&&picked(ax0.id,o1.id),"multi mode did not keep both checks");
     ck(ADV===null,"multi mode queued an auto-advance");
@@ -1290,7 +1293,7 @@ function selftest(){
   /* deciding the last open question opens the panel by itself */
   for(var pi=0;pi<MOCKUP.axes.length;pi++){var pax=MOCKUP.axes[pi];
     if(moot(pax.id))continue;goToAxis(pax.id);key("Enter");}
-  ck(ovOpen("picks"),"deciding the last question did not open the picks panel");
+  if(!anyMulti())ck(ovOpen("picks"),"deciding the last question did not open the picks panel"); /* refine mode keeps checking instead */
   closeOvs();
   state.sel={};state.onotes={};state.out={};CUR=0;cancelAdv();paint();
   openOv("picks");
