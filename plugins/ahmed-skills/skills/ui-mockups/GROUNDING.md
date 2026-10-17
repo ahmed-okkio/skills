@@ -4,6 +4,8 @@ Extract the real surface **verbatim** before any mockup is drawn. A mockup built
 
 Dispatch this as its own subagent; it is slow and its output is reused by every later page.
 
+**Cache it.** Write the pack to `<scratchpad-root>/ui-mockups-cache/<repo>-<commit>-<surface>/` (short commit hash). If that folder exists, reuse it: no re-extraction, across pages, rounds and sessions. Every brief passes this path; page agents never copy CSS from the repo themselves. Right after writing `<surface>.css`, check its `{`/`}` counts match — a truncated `:root` block collapses every slide.
+
 Take **one branch** below matching the source, then the shared tail.
 
 ## Read the right ref

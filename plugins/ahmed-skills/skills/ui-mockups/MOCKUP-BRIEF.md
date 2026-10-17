@@ -2,7 +2,7 @@
 
 One subagent, one surface, one page built from [`assets/shell.html`](assets/shell.html).
 
-**The brief you write carries only what is specific to this surface:** the subject line from `DESIGN-DIRECTION.md` (what, who, the one job), the grounding pack paths and its fidelity rule, the exact constant sample content, the axes with their questions, the directions you already see per axis, locks from earlier rounds, and the output path. Tell the agent to read this file and [`DESIGN-DIRECTION.md`](DESIGN-DIRECTION.md) itself. Never paste either into the brief.
+**The brief you write carries only what is specific to this surface:** the subject line from `DESIGN-DIRECTION.md` (what, who, the one job), the grounding cache path and its fidelity rule (the agent reads the pack from there and never re-extracts from the repo), the exact constant sample content, the axes with their questions, the directions you already see per axis, locks from earlier rounds, and the output path. Tell the agent to read this file and [`DESIGN-DIRECTION.md`](DESIGN-DIRECTION.md) itself. Never paste either into the brief.
 
 **One axis per independent decision.** If the user could want option X of one choice with option Y of another (an icon, and separately how the read-only state shows), those are two axes. Never make them combinations within one axis. Each axis's options vary only that axis and draw the others at today's look.
 
@@ -10,10 +10,12 @@ One subagent, one surface, one page built from [`assets/shell.html`](assets/shel
 
 The shell's viewer code is never read, copied or rewritten. The agent owns two files:
 
+**Write `tokens.css` and `data.js` with the Write tool, never a shell heredoc** — CSS and JS quotes break heredocs, and every run that tried one lost two turns.
+
 1. `node <skill>/assets/build.js <workdir>` (`<skill>` is this skill's folder) — writes `tokens.css` and `data.js` (the built-in demo) into `<workdir>` and prints the data contract. The contract and the demo are the whole API.
-2. Replace both files wholesale for the real surface: grounded tokens and mock CSS in `tokens.css`; `var MOCKUP={...}` in `data.js`.
-3. `node <skill>/assets/build.js <workdir>/tokens.css <workdir>/data.js <page>.html` — splices them into a copy of the shell.
-4. Run `?selftest` (see `SKILL.md`), fix `data.js` / `tokens.css`, rebuild. Repeat until green.
+2. Open both with the Read tool (Write refuses a file it has not seen read; `cat` does not count), then replace both wholesale: grounded tokens and mock CSS in `tokens.css`; `var MOCKUP={...}` in `data.js`.
+3. `node <skill>/assets/build.js <workdir>/tokens.css <workdir>/data.js <page>.html --test` — splices them into a copy of the shell and runs the headless selftest: one line on PASS, the full report on FAIL.
+4. Fix `data.js` / `tokens.css` and rerun step 3 until green.
 
 A viewer bug is a shell bug: report it back rather than patching the generated page.
 
@@ -47,7 +49,7 @@ The build recipe (`recipeFor`) is the one place detail runs full: the concrete b
 
 ## The deck
 
-**10-16 options per page**, per the premises in `DESIGN-DIRECTION.md`. Invent beyond the directions in the brief.
+**As many options as the question has genuinely different premises**, per `DESIGN-DIRECTION.md` — no floor, no cap; a restyle of a premise already on the page is not another option. Invent beyond the directions in the brief.
 
 **Cheapest first** within each axis — smallest change, least rebinding at the front.
 

@@ -41,6 +41,7 @@ plugins/ahmed-skills/
   .claude-plugin/plugin.json        Claude Code plugin manifest
   .codex-plugin/plugin.json         Codex plugin manifest
   skills/<name>/SKILL.md            the skills (one folder each)
+  agents/<name>.md                  Claude Code subagents the skills dispatch (other harnesses fall back to their general agent)
 ```
 
 See [AGENTS.md](./AGENTS.md) for how to add a skill.
